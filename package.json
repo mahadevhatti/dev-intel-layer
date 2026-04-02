@@ -1,12 +1,12 @@
 {
-  "name": "dev-intel-layer",
+  "name": "cortex",
   "version": "0.1.0",
-  "description": "Local-first intelligence layer for AI coding agents — persistent knowledge base, semantic dependency graph, and deterministic enforcement via MCP",
+  "description": "Cortex — local-first intelligence server for AI coding agents with persistent knowledge base, semantic dependency graph, and deterministic enforcement via MCP",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "dev-intel": "dist/cli/index.js"
+    "cortex": "dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc && npm run build:ui",
@@ -27,7 +27,7 @@
   },
   "keywords": [
     "mcp",
-    "developer-intelligence",
+    "cortex",
     "knowledge-base",
     "lsp",
     "dependency-graph"

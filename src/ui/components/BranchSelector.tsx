@@ -173,13 +173,13 @@ export function BranchSelector() {
         <div className="text-xs text-indigo-300/80 space-y-2">
           <p>
             <strong>Branch snapshots</strong> are captured automatically when you switch branches via Git.
-            The <code className="text-indigo-400">post-checkout</code> hook notifies the DIL server, which saves
+            The <code className="text-indigo-400">post-checkout</code> hook notifies the Cortex server, which saves
             the current branch delta and loads the target branch context.
           </p>
           <p>
             To install hooks, run:
             <code className="block mt-1 bg-zinc-800/50 rounded px-2 py-1 text-indigo-400 font-mono">
-              npx dev-intel hooks install /path/to/repo
+              npx cortex hooks install /path/to/repo
             </code>
           </p>
         </div>

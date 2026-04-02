@@ -5,14 +5,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { simpleGit } from 'simple-git';
 import type { GraphNode, GraphEdge } from '../core/types.js';
 import type { ServerDependencies } from './httpServer.js';
-import { DILError } from '../core/errors.js';
+import { CortexError } from '../core/errors.js';
 
 export function createApiRoutes(deps: ServerDependencies): Router {
   const router = Router();
   const { storage, repoManager, repoRouter, ruleService, manifestService, graphQuery } = deps;
 
   function handleError(res: Response, err: unknown) {
-    if (err instanceof DILError) {
+    if (err instanceof CortexError) {
       res.status(err.statusCode).json({ error: err.code, message: err.message });
     } else {
       const message = err instanceof Error ? err.message : String(err);

@@ -49,7 +49,7 @@ export function createHttpServer(deps: ServerDependencies): Express {
     }
     res.sendFile(path.join(uiDistPath, 'index.html'), (err) => {
       if (err) {
-        res.status(200).json({ message: 'DIL server running. UI not built yet.' });
+        res.status(200).json({ message: 'Cortex server running. UI not built yet.' });
       }
     });
   });

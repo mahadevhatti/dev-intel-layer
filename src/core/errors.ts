@@ -1,22 +1,22 @@
-export class DILError extends Error {
+export class CortexError extends Error {
   constructor(
     message: string,
     public readonly code: string,
     public readonly statusCode: number = 500,
   ) {
     super(message);
-    this.name = 'DILError';
+    this.name = 'CortexError';
   }
 }
 
-export class RepoNotFoundError extends DILError {
+export class RepoNotFoundError extends CortexError {
   constructor(identifier: string) {
     super(`Repository not found: ${identifier}`, 'REPO_NOT_FOUND', 404);
     this.name = 'RepoNotFoundError';
   }
 }
 
-export class RepoNotReadyError extends DILError {
+export class RepoNotReadyError extends CortexError {
   constructor(repoId: string, status: string) {
     super(
       `Repository ${repoId} is not ready (status: ${status})`,
@@ -27,35 +27,35 @@ export class RepoNotReadyError extends DILError {
   }
 }
 
-export class RepoAlreadyExistsError extends DILError {
+export class RepoAlreadyExistsError extends CortexError {
   constructor(repoPath: string) {
     super(`Repository already registered: ${repoPath}`, 'REPO_ALREADY_EXISTS', 409);
     this.name = 'RepoAlreadyExistsError';
   }
 }
 
-export class NotAGitRepoError extends DILError {
+export class NotAGitRepoError extends CortexError {
   constructor(path: string) {
     super(`Not a git repository: ${path}`, 'NOT_A_GIT_REPO', 400);
     this.name = 'NotAGitRepoError';
   }
 }
 
-export class RuleNotFoundError extends DILError {
+export class RuleNotFoundError extends CortexError {
   constructor(ruleId: string) {
     super(`Rule not found: ${ruleId}`, 'RULE_NOT_FOUND', 404);
     this.name = 'RuleNotFoundError';
   }
 }
 
-export class ManifestNotFoundError extends DILError {
+export class ManifestNotFoundError extends CortexError {
   constructor(repoId: string) {
     super(`Manifest not found for repo: ${repoId}`, 'MANIFEST_NOT_FOUND', 404);
     this.name = 'ManifestNotFoundError';
   }
 }
 
-export class LSPServerNotAvailableError extends DILError {
+export class LSPServerNotAvailableError extends CortexError {
   constructor(serverId: string, installHint: string) {
     super(
       `Language server "${serverId}" not available. Install with: ${installHint}`,
@@ -66,14 +66,14 @@ export class LSPServerNotAvailableError extends DILError {
   }
 }
 
-export class StorageError extends DILError {
+export class StorageError extends CortexError {
   constructor(message: string) {
     super(message, 'STORAGE_ERROR', 500);
     this.name = 'StorageError';
   }
 }
 
-export class ConfigError extends DILError {
+export class ConfigError extends CortexError {
   constructor(message: string) {
     super(message, 'CONFIG_ERROR', 500);
     this.name = 'ConfigError';

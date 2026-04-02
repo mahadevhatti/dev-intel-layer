@@ -9,7 +9,7 @@ export function hooksCommand(): Command {
   cmd
     .command('install <repoPath>')
     .alias('install-hooks')
-    .description('Install DIL Git hooks in a repository')
+    .description('Install Cortex Git hooks in a repository')
     .action((repoPath: string) => {
       const absolutePath = path.resolve(repoPath);
       const result = installHooks(absolutePath);
@@ -18,14 +18,14 @@ export function hooksCommand(): Command {
         console.warn(`Installed hooks: ${result.installed.join(', ')}`);
       }
       if (result.skipped.length > 0) {
-        console.warn(`Skipped (existing non-DIL hooks): ${result.skipped.join(', ')}`);
+        console.warn(`Skipped (existing non-Cortex hooks): ${result.skipped.join(', ')}`);
       }
     });
 
   cmd
     .command('uninstall <repoPath>')
     .alias('uninstall-hooks')
-    .description('Remove DIL Git hooks from a repository')
+    .description('Remove Cortex Git hooks from a repository')
     .action((repoPath: string) => {
       const absolutePath = path.resolve(repoPath);
       const result = uninstallHooks(absolutePath);

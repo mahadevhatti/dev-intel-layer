@@ -11,7 +11,7 @@ let ruleService: RuleService;
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dil-rule-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-rule-test-'));
   storage = new StorageService(path.join(tmpDir, 'test.db'));
   ruleService = new RuleService(storage);
 

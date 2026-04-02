@@ -11,7 +11,7 @@ import { createHttpServer, startServer } from '../../server/httpServer.js';
 
 export function serveCommand(): Command {
   return new Command('serve')
-    .description('Start the DIL central server')
+    .description('Start the Cortex central server')
     .option('-p, --port <port>', 'Port to listen on')
     .option('--no-ui', 'Do not auto-open browser')
     .action(async (opts) => {
@@ -21,7 +21,7 @@ export function serveCommand(): Command {
       ensureStorageDir(config);
       const dbPath = getDatabasePath(config);
 
-      console.warn(`[DIL] Initializing database at ${dbPath}`);
+      console.warn(`[Cortex] Initializing database at ${dbPath}`);
       const storage = new StorageService(dbPath);
 
       const repoManager = new RepoManager(storage);
@@ -43,10 +43,10 @@ export function serveCommand(): Command {
 
       const server = await startServer(app, port, config.server.host);
 
-      console.warn(`[DIL] Server running at http://${config.server.host}:${port}`);
-      console.warn(`[DIL]   MCP endpoint: http://${config.server.host}:${port}/mcp`);
-      console.warn(`[DIL]   REST API:     http://${config.server.host}:${port}/api`);
-      console.warn(`[DIL]   Web UI:       http://${config.server.host}:${port}/`);
+      console.warn(`[Cortex] Server running at http://${config.server.host}:${port}`);
+      console.warn(`[Cortex]   MCP endpoint: http://${config.server.host}:${port}/mcp`);
+      console.warn(`[Cortex]   REST API:     http://${config.server.host}:${port}/api`);
+      console.warn(`[Cortex]   Web UI:       http://${config.server.host}:${port}/`);
 
       if (opts.ui !== false && config.ui.autoOpen) {
         const { exec } = await import('node:child_process');
@@ -56,7 +56,7 @@ export function serveCommand(): Command {
       }
 
       const shutdown = () => {
-        console.warn('\n[DIL] Shutting down...');
+        console.warn('\n[Cortex] Shutting down...');
         server.close();
         storage.close();
         process.exit(0);

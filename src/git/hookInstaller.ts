@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const PRE_COMMIT_HOOK = `#!/bin/sh
-# .git/hooks/pre-commit — installed by dev-intel
+# .git/hooks/pre-commit — installed by cortex
 
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-if ! curl -s --max-time 2 "$DIL_SERVER/api/health" > /dev/null 2>&1; then
-  echo "⚠ DIL: Server not running. Skipping KB sync check."
-  echo "   Start it with: npx dev-intel serve"
+if ! curl -s --max-time 2 "$CORTEX_SERVER/api/health" > /dev/null 2>&1; then
+  echo "⚠ Cortex: Server not running. Skipping KB sync check."
+  echo "   Start it with: npx cortex serve"
   exit 0
 fi
 
@@ -22,17 +22,17 @@ CURRENT_HASH=$(node -e "
   process.stdout.write(crypto.createHash('sha256').update(payload).digest('hex'));
 ")
 
-MANIFEST_HASH=$(curl -s "$DIL_SERVER/api/repos/manifest?repoPath=$REPO_ROOT" \\
+MANIFEST_HASH=$(curl -s "$CORTEX_SERVER/api/repos/manifest?repoPath=$REPO_ROOT" \\
   | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stagedHash)}catch{console.log('UNKNOWN')}})")
 
 if [ "$MANIFEST_HASH" = "UNKNOWN" ]; then
-  echo "⚠ DIL: Repo not registered with DIL server. Skipping check."
+  echo "⚠ Cortex: Repo not registered with Cortex server. Skipping check."
   exit 0
 fi
 
 if [ "$CURRENT_HASH" != "$MANIFEST_HASH" ]; then
   echo ""
-  echo "❌ DIL: Knowledge base is out of sync with staged changes."
+  echo "❌ Cortex: Knowledge base is out of sync with staged changes."
   echo ""
   echo "   Staged hash:   $CURRENT_HASH"
   echo "   Manifest hash:  $MANIFEST_HASH"
@@ -47,22 +47,22 @@ exit 0
 `;
 
 const POST_MERGE_HOOK = `#!/bin/sh
-# .git/hooks/post-merge — installed by dev-intel
+# .git/hooks/post-merge — installed by cortex
 
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
-curl -s -X POST "$DIL_SERVER/api/repos/notify" \\
+curl -s -X POST "$CORTEX_SERVER/api/repos/notify" \\
   -H "Content-Type: application/json" \\
   -d "{\\"repoPath\\":\\"$REPO_ROOT\\",\\"event\\":\\"post-merge\\"}" > /dev/null 2>&1
 `;
 
 const POST_CHECKOUT_HOOK = `#!/bin/sh
-# .git/hooks/post-checkout — installed by dev-intel
+# .git/hooks/post-checkout — installed by cortex
 
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 NEW_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-curl -s -X POST "$DIL_SERVER/api/repos/notify" \\
+curl -s -X POST "$CORTEX_SERVER/api/repos/notify" \\
   -H "Content-Type: application/json" \\
   -d "{\\"repoPath\\":\\"$REPO_ROOT\\",\\"event\\":\\"post-checkout\\",\\"branch\\":\\"$NEW_BRANCH\\"}" > /dev/null 2>&1
 `;
@@ -73,7 +73,7 @@ const HOOKS: Record<string, string> = {
   'post-checkout': POST_CHECKOUT_HOOK,
 };
 
-const DIL_MARKER = '# .git/hooks/';
+const CORTEX_MARKER = '# .git/hooks/';
 
 export function installHooks(
   repoPath: string,
@@ -99,7 +99,7 @@ export function installHooks(
 
     if (fs.existsSync(hookPath)) {
       const existing = fs.readFileSync(hookPath, 'utf-8');
-      if (existing.includes(DIL_MARKER)) {
+      if (existing.includes(CORTEX_MARKER)) {
         fs.writeFileSync(hookPath, hookContent, { mode: 0o755 });
         installed.push(hookType);
         continue;
@@ -132,7 +132,7 @@ export function uninstallHooks(
     }
 
     const content = fs.readFileSync(hookPath, 'utf-8');
-    if (content.includes(DIL_MARKER)) {
+    if (content.includes(CORTEX_MARKER)) {
       fs.unlinkSync(hookPath);
       removed.push(hookType);
     } else {

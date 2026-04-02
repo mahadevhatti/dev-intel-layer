@@ -217,7 +217,7 @@ export function Dashboard() {
       <div>
         <h1 className="text-2xl font-bold text-zinc-100">Dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Cross-repo overview of your Developer Intelligence Layer
+          Cross-repo overview of your Cortex intelligence server
         </p>
       </div>
 
@@ -242,7 +242,7 @@ export function Dashboard() {
             <span className="text-emerald-400 font-medium">Connected</span>
           </div>
           <div className="text-zinc-500">localhost:4170</div>
-          <div className="text-zinc-600">~/.dev-intel/knowledge.db</div>
+          <div className="text-zinc-600">~/.cortex/knowledge.db</div>
           <div className="ml-auto text-zinc-500">
             MCP endpoint: <code className="text-zinc-400">http://localhost:4170/mcp</code>
           </div>
@@ -267,7 +267,7 @@ export function Dashboard() {
             label="MCP Configuration (add to your IDE)"
             content={`{
   "mcpServers": {
-    "dev-intel": {
+    "cortex": {
       "url": "http://localhost:4170/mcp"
     }
   }
@@ -275,7 +275,7 @@ export function Dashboard() {
           />
           <CopyableSnippet
             label="Or register via CLI"
-            content="npx dev-intel repos add /path/to/your/project"
+            content="npx cortex repos add /path/to/your/project"
           />
         </div>
       ) : (

@@ -10,8 +10,8 @@ import { hooksCommand } from './commands/hooks.js';
 const program = new Command();
 
 program
-  .name('dev-intel')
-  .description('Developer Intelligence Layer — local-first knowledge base for AI coding agents')
+  .name('cortex')
+  .description('Cortex — local-first intelligence server for AI coding agents')
   .version('0.1.0');
 
 program.addCommand(serveCommand());

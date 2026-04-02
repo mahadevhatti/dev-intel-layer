@@ -177,7 +177,7 @@ export interface LanguageServerConfig {
   enabled?: boolean;
 }
 
-export interface DILConfig {
+export interface CortexConfig {
   version: number;
   server: {
     port: number;

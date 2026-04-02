@@ -11,7 +11,7 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
   const { repoManager, repoRouter, ruleService, manifestService, syncService, graphQuery, storage } = deps;
 
   const mcpServer = new McpServer({
-    name: 'dev-intel',
+    name: 'cortex',
     version: '0.1.0',
   });
 

@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/status-Phase%201-orange?style=flat-square" alt="Status: Phase 1" />
 </p>
 
-<h1 align="center">Developer Intelligence Layer</h1>
+<h1 align="center">Cortex</h1>
 
 <p align="center">
   <strong>A local-first intelligence server that gives AI coding agents persistent memory, structural awareness, and deterministic enforcement across your entire codebase.</strong>
@@ -31,7 +31,7 @@ There is no system that maintains a **persistent, structured knowledge base** of
 
 ## The Solution
 
-**DIL** is a central MCP server running on `localhost` that:
+**Cortex** is a central MCP server running on `localhost` that:
 
 1. **Captures** developer intent as structured knowledge (rules, lessons, preferences)
 2. **Maps** codebase structure as a semantic dependency graph via LSP
@@ -55,7 +55,7 @@ One server process. Multiple repos. Multiple agents. Zero cloud dependencies.
             │     MCP over Streamable HTTP (localhost:4170/mcp)
             ▼                      ▼                      ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    DIL Central Server (localhost:4170)                │
+│                  Cortex Central Server (localhost:4170)               │
 │                                                                      │
 │   /mcp ─── MCP Endpoint        /api/* ─── REST API                   │
 │   / ────── React Dashboard      Repo Router ── per-repo routing      │
@@ -65,7 +65,7 @@ One server process. Multiple repos. Multiple agents. Zero cloud dependencies.
 │   │Manager │ │  Store   │ │  Graph   │ │ Service  │ │  Engine   │  │
 │   └────────┘ └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
 │                                                                      │
-│   Storage: ~/.dev-intel/knowledge.db (single central SQLite DB)      │
+│   Storage: ~/.cortex/knowledge.db (single central SQLite DB)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,8 +82,8 @@ One server process. Multiple repos. Multiple agents. Zero cloud dependencies.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/dev-intel-layer.git
-cd dev-intel-layer
+git clone https://github.com/your-username/cortex.git
+cd cortex
 
 # Install dependencies
 npm install
@@ -92,7 +92,7 @@ npm install
 npm run build
 
 # Start the central server
-npx dev-intel serve
+npx cortex serve
 ```
 
 The server starts at **http://localhost:4170** with:
@@ -107,7 +107,7 @@ Add this to your IDE's MCP configuration (e.g., Cursor `mcp.json`):
 ```json
 {
   "mcpServers": {
-    "dev-intel": {
+    "cortex": {
       "url": "http://localhost:4170/mcp"
     }
   }
@@ -147,7 +147,7 @@ Language-agnostic code structure mapping using Language Server Protocol:
 
 SHA-256 manifest hashing ensures knowledge stays in sync with code:
 
-- Pre-commit hooks query the DIL server to validate staged changes against the manifest
+- Pre-commit hooks query the Cortex server to validate staged changes against the manifest
 - Commits are blocked when the knowledge base drifts from the code
 - Sync → approve → commit: a verifiable, human-in-the-loop workflow
 
@@ -294,35 +294,35 @@ All repo-scoped tools accept a `repoPath` parameter to identify the target proje
 
 ```bash
 # Server
-npx dev-intel serve                        # Start on localhost:4170
-npx dev-intel serve --port 4180            # Custom port
-npx dev-intel serve --no-ui                # Skip auto-opening browser
+npx cortex serve                        # Start on localhost:4170
+npx cortex serve --port 4180            # Custom port
+npx cortex serve --no-ui                # Skip auto-opening browser
 
 # Repo management
-npx dev-intel repos                        # List registered repos
-npx dev-intel repos add /path/to/repo      # Manually register a repo
-npx dev-intel repos remove <repoId>        # Unregister a repo
+npx cortex repos                        # List registered repos
+npx cortex repos add /path/to/repo      # Manually register a repo
+npx cortex repos remove <repoId>        # Unregister a repo
 
 # Per-repo operations (server must be running)
-npx dev-intel status /path/to/repo         # KB status + manifest
-npx dev-intel check /path/to/repo          # Validate manifest (like pre-commit)
+npx cortex status /path/to/repo         # KB status + manifest
+npx cortex check /path/to/repo          # Validate manifest (like pre-commit)
 
 # Git hooks
-npx dev-intel install-hooks /path/to/repo  # Install pre-commit, post-merge, post-checkout
-npx dev-intel uninstall-hooks /path/to/repo
+npx cortex install-hooks /path/to/repo  # Install pre-commit, post-merge, post-checkout
+npx cortex uninstall-hooks /path/to/repo
 ```
 
 ---
 
 ## Configuration
 
-### Central Config: `~/.dev-intel/config.json`
+### Central Config: `~/.cortex/config.json`
 
 ```json
 {
   "version": 1,
   "server": { "port": 4170, "host": "localhost" },
-  "storage": { "path": "~/.dev-intel", "database": "knowledge.db" },
+  "storage": { "path": "~/.cortex", "database": "knowledge.db" },
   "ui": { "autoOpen": true },
   "languageServers": {
     "typescript": { "enabled": true, "command": "typescript-language-server", "args": ["--stdio"] },
@@ -336,7 +336,7 @@ npx dev-intel uninstall-hooks /path/to/repo
 }
 ```
 
-### Per-Repo Overrides: `<repo-root>/.dev-intel.json`
+### Per-Repo Overrides: `<repo-root>/.cortex.json`
 
 ```json
 {
@@ -352,7 +352,7 @@ Per-repo values override central defaults at the key level.
 ## Project Structure
 
 ```
-dev-intel-layer/
+cortex/
 ├── src/
 │   ├── core/                  # Types, config, SQLite storage, errors
 │   ├── repo/                  # Repo manager + request router
@@ -434,10 +434,10 @@ The knowledge synchronization workflow:
 
 ```
 1. Developer stages changes
-2. AI agent calls sync_kb → DIL returns staged files, diff, affected nodes, existing rules
+2. AI agent calls sync_kb → Cortex returns staged files, diff, affected nodes, existing rules
 3. AI agent analyzes the data and proposes KB updates
 4. Developer reviews and approves
-5. AI agent calls apply_kb_updates → DIL persists changes, refreshes manifest
+5. AI agent calls apply_kb_updates → Cortex persists changes, refreshes manifest
 6. Developer commits → pre-commit hook verifies manifest hash matches staged hash
 7. Commit succeeds ✅
 ```

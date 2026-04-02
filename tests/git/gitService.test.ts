@@ -14,7 +14,7 @@ function exec(cmd: string) {
 }
 
 beforeEach(() => {
-  tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dil-git-test-')));
+  tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-git-test-')));
   repoPath = path.join(tmpDir, 'repo');
   fs.mkdirSync(repoPath);
   exec('git init');

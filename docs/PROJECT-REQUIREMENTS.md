@@ -1,10 +1,10 @@
-# Developer Intelligence Layer (DIL)
+# Cortex
 
 ## Project Requirements Specification — Final
 
 | Field            | Value                                       |
 | ---------------- | ------------------------------------------- |
-| Project          | Developer Intelligence Layer (DIL)          |
+| Project          | Cortex                                      |
 | Type             | Local-first central MCP intelligence server    |
 | Author           | Mahadev Hatti                               |
 | Created          | 2026-04-02                                  |
@@ -79,7 +79,7 @@ A local-first intelligence system that:
 
 ### 5.1 Architecture Overview
 
-DIL runs as a **single persistent HTTP server** on the developer's machine. Multiple AI agents (across different IDEs and projects) connect to it as clients. The server manages all registered repos through one central SQLite database.
+Cortex runs as a **single persistent HTTP server** on the developer's machine. Multiple AI agents (across different IDEs and projects) connect to it as clients. The server manages all registered repos through one central SQLite database.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -95,7 +95,7 @@ DIL runs as a **single persistent HTTP server** on the developer's machine. Mult
             │    Each request includes repoPath            │
             ▼                      ▼                      ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    DIL Central Server (localhost:4170)                │
+│                  Cortex Central Server (localhost:4170)               │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────────┐  │
 │  │  HTTP Layer                                                    │  │
@@ -128,7 +128,7 @@ DIL runs as a **single persistent HTTP server** on the developer's machine. Mult
 │     │(Proj A)  │      │(Proj B)  │      │  (Proj C)    │           │
 │     └──────────┘      └──────────┘      └──────────────┘           │
 │                                                                      │
-│  Storage: ~/.dev-intel/knowledge.db (single central DB)              │
+│  Storage: ~/.cortex/knowledge.db (single central DB)                 │
 └──────────────────────────────────────────────────────────────────────┘
 
         ┌──────────────────┐
@@ -201,7 +201,7 @@ interface KnowledgeRule {
 
 #### SQLite Schema
 
-All tables live in a single central database at `~/.dev-intel/knowledge.db`.
+All tables live in a single central database at `~/.cortex/knowledge.db`.
 
 ```sql
 -- Central repo registry
@@ -245,9 +245,9 @@ CREATE INDEX idx_rules_active ON rules(active);
 #### Why LSP (Not Raw AST)
 
 The M x N problem: M editors × N languages = M×N integrations.
-The M + N solution: LSP standardizes the protocol. DIL is an LSP client.
+The M + N solution: LSP standardizes the protocol. Cortex is an LSP client.
 
-- DIL's graph engine is **language-agnostic** — it speaks LSP, not TypeScript/Python/Rust
+- Cortex's graph engine is **language-agnostic** — it speaks LSP, not TypeScript/Python/Rust
 - Adding a new language = adding a config entry, not writing a parser
 - Language servers (tsserver, pyright, rust-analyzer) are battle-tested and maintained by language creators
 
@@ -275,11 +275,11 @@ interface LanguageServerConfig {
 | Go             | gopls                       | `gopls serve`                    | `go install golang.org/x/tools/gopls@latest` |
 | Java           | jdtls                       | `jdtls`                          | Download from Eclipse           |
 
-Users can add custom servers via `~/.dev-intel/config.json` or per-repo `.dev-intel.json`.
+Users can add custom servers via `~/.cortex/config.json` or per-repo `.cortex.json`.
 
 #### LSP Methods Used
 
-| LSP Method                           | What DIL Extracts             | Graph Mapping          |
+| LSP Method                           | What Cortex Extracts          | Graph Mapping          |
 |--------------------------------------|-------------------------------|------------------------|
 | `textDocument/documentSymbol`        | Functions, classes, interfaces | `GraphNode.symbols[]`  |
 | `textDocument/definition`            | Import resolution             | `GraphEdge` (dependency) |
@@ -489,15 +489,15 @@ The hash is **deterministic**: same staged content always produces the same hash
 
 #### Storage Location
 
-All DIL data is stored centrally:
+All Cortex data is stored centrally:
 
 ```
-~/.dev-intel/
+~/.cortex/
   knowledge.db              # Central SQLite database (repos, rules, graph, manifests)
   config.json               # Central server configuration
 ```
 
-Individual repos may optionally have a `.dev-intel.json` file at the repo root for per-repo configuration overrides (language server settings, ignore paths, etc.). This is the only DIL artifact in a repo's working tree.
+Individual repos may optionally have a `.cortex.json` file at the repo root for per-repo configuration overrides (language server settings, ignore paths, etc.). This is the only Cortex artifact in a repo's working tree.
 
 ---
 
@@ -525,27 +525,27 @@ class GitService {
 
 #### Git Hooks
 
-| Hook           | Trigger               | DIL Action                          |
+| Hook           | Trigger               | Cortex Action                       |
 |----------------|-----------------------|-------------------------------------|
-| `pre-commit`   | Before every commit   | Call DIL server to validate manifest ↔ staged hash |
-| `post-merge`   | After `git merge`     | Notify DIL server: flag KB resync needed |
-| `post-checkout`| After branch switch   | Notify DIL server: switch branch KB context |
+| `pre-commit`   | Before every commit   | Call Cortex server to validate manifest ↔ staged hash |
+| `post-merge`   | After `git merge`     | Notify Cortex server: flag KB resync needed |
+| `post-checkout`| After branch switch   | Notify Cortex server: switch branch KB context |
 
 #### Pre-commit Hook (Shell Script)
 
-The hook is lightweight — it makes an HTTP call to the running DIL central server instead of reading a local manifest file. No `.dev-intel/` directory is needed in the repo.
+The hook is lightweight — it makes an HTTP call to the running Cortex central server instead of reading a local manifest file. No `.cortex/` directory is needed in the repo.
 
 ```bash
 #!/bin/sh
-# .git/hooks/pre-commit — installed by `npx dev-intel install-hooks /path/to/repo`
+# .git/hooks/pre-commit — installed by `npx cortex install-hooks /path/to/repo`
 
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-# Check if DIL server is running
-if ! curl -s --max-time 2 "$DIL_SERVER/api/health" > /dev/null 2>&1; then
-  echo "⚠ DIL: Server not running. Skipping KB sync check."
-  echo "   Start it with: npx dev-intel serve"
+# Check if Cortex server is running
+if ! curl -s --max-time 2 "$CORTEX_SERVER/api/health" > /dev/null 2>&1; then
+  echo "⚠ Cortex: Server not running. Skipping KB sync check."
+  echo "   Start it with: npx cortex serve"
   exit 0  # Don't block if server is down
 fi
 
@@ -555,17 +555,17 @@ DIFF_CONTENT=$(git diff --cached)
 CURRENT_HASH=$(echo "${STAGED_FILES}---${DIFF_CONTENT}" | shasum -a 256 | cut -d' ' -f1)
 
 # Get manifest hash from central server
-MANIFEST_HASH=$(curl -s "$DIL_SERVER/api/repos/manifest?repoPath=$REPO_ROOT" \
+MANIFEST_HASH=$(curl -s "$CORTEX_SERVER/api/repos/manifest?repoPath=$REPO_ROOT" \
   | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stagedHash)}catch{console.log('UNKNOWN')}})")
 
 if [ "$MANIFEST_HASH" = "UNKNOWN" ]; then
-  echo "⚠ DIL: Repo not registered with DIL server. Skipping check."
+  echo "⚠ Cortex: Repo not registered with Cortex server. Skipping check."
   exit 0
 fi
 
 if [ "$CURRENT_HASH" != "$MANIFEST_HASH" ]; then
   echo ""
-  echo "❌ DIL: Knowledge base is out of sync with staged changes."
+  echo "❌ Cortex: Knowledge base is out of sync with staged changes."
   echo ""
   echo "   Staged hash:   $CURRENT_HASH"
   echo "   Manifest hash:  $MANIFEST_HASH"
@@ -583,9 +583,9 @@ exit 0
 
 ```bash
 #!/bin/sh
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
-curl -s -X POST "$DIL_SERVER/api/repos/notify" \
+curl -s -X POST "$CORTEX_SERVER/api/repos/notify" \
   -H "Content-Type: application/json" \
   -d "{\"repoPath\":\"$REPO_ROOT\",\"event\":\"post-merge\"}" > /dev/null 2>&1
 ```
@@ -594,10 +594,10 @@ curl -s -X POST "$DIL_SERVER/api/repos/notify" \
 
 ```bash
 #!/bin/sh
-DIL_SERVER="http://localhost:4170"
+CORTEX_SERVER="http://localhost:4170"
 REPO_ROOT=$(git rev-parse --show-toplevel)
 NEW_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-curl -s -X POST "$DIL_SERVER/api/repos/notify" \
+curl -s -X POST "$CORTEX_SERVER/api/repos/notify" \
   -H "Content-Type: application/json" \
   -d "{\"repoPath\":\"$REPO_ROOT\",\"event\":\"post-checkout\",\"branch\":\"$NEW_BRANCH\"}" > /dev/null 2>&1
 ```
@@ -610,7 +610,7 @@ curl -s -X POST "$DIL_SERVER/api/repos/notify" \
 
 #### Transport: Streamable HTTP
 
-DIL uses **Streamable HTTP** (not stdio) as its MCP transport. The server runs as a persistent process on the developer's machine, and AI agents connect to it over HTTP. This enables:
+Cortex uses **Streamable HTTP** (not stdio) as its MCP transport. The server runs as a persistent process on the developer's machine, and AI agents connect to it over HTTP. This enables:
 
 - Multiple agents connecting simultaneously (different IDEs, different projects)
 - No IDE-spawned processes — the user starts the server once
@@ -623,7 +623,7 @@ This is what goes into IDE settings (Cursor `mcp.json`, Claude Code config, etc.
 ```json
 {
   "mcpServers": {
-    "dev-intel": {
+    "cortex": {
       "url": "http://localhost:4170/mcp"
     }
   }
@@ -858,7 +858,7 @@ Developer has staged changes and opens an AI agent chat.
 ┌────────────────────────────────────────────────────────┐
 │  Step 1: Agent calls sync_kb                           │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │ DIL collects:                                     │ │
+│  │ Cortex collects:                                     │ │
 │  │  • Staged files (git diff --cached --name-only)   │ │
 │  │  • Full diff (git diff --cached)                  │ │
 │  │  • Affected graph nodes                           │ │
@@ -891,7 +891,7 @@ Developer has staged changes and opens an AI agent chat.
 │                          ↓                             │
 │  Step 4: Agent calls apply_kb_updates                  │
 │  ┌───────────────────────────────────────────────────┐ │
-│  │ DIL applies:                                      │ │
+│  │ Cortex applies:                                      │ │
 │  │  • Updates graph nodes in SQLite                  │ │
 │  │  • Adds/updates rules in SQLite                   │ │
 │  │  • Recomputes manifest hash                       │ │
@@ -948,7 +948,7 @@ interface BranchKB {
 
 | Operation       | What Happens                                          |
 |-----------------|-------------------------------------------------------|
-| Branch switch   | Post-checkout hook notifies DIL server via HTTP; server saves current delta, loads target |
+| Branch switch   | Post-checkout hook notifies Cortex server via HTTP; server saves current delta, loads target |
 | New branch      | Inherits parent KB as base snapshot                   |
 | Merge to main   | Delta applied to main; conflicts surfaced via MCP     |
 | Branch delete   | Delta removed (parent unaffected)                     |
@@ -967,7 +967,7 @@ This means branches are lightweight (only storing changes), and parent updates c
 
 ### 6.8 Bootstrap Initialization
 
-**Purpose**: First-time setup when a repo is introduced to the DIL server. Repos are auto-discovered — no manual init step required.
+**Purpose**: First-time setup when a repo is introduced to the Cortex server. Repos are auto-discovered — no manual init step required.
 
 #### Trigger
 
@@ -975,9 +975,9 @@ The primary trigger is **auto-discovery**: when an AI agent calls any MCP tool w
 
 Alternative triggers:
 - Agent explicitly calls `init_kb({ repoPath, mode })` for more control
-- User manually registers via CLI: `npx dev-intel repos add /path/to/repo`
+- User manually registers via CLI: `npx cortex repos add /path/to/repo`
 
-There is no requirement for a `.dev-intel/` directory to exist in the repo. All state is centralized.
+There is no requirement for a `.cortex/` directory to exist in the repo. All state is centralized.
 
 #### Modes
 
@@ -1015,7 +1015,7 @@ After init, the AI agent can be asked to "enrich the knowledge base" which:
 #### Hook Installation
 
 Git hooks are installed separately from bootstrap, since they modify files inside the repo. The agent or user can install hooks via:
-- CLI: `npx dev-intel install-hooks /path/to/repo`
+- CLI: `npx cortex install-hooks /path/to/repo`
 - The server does **not** auto-install hooks — this is an explicit opt-in action
 
 ---
@@ -1029,13 +1029,13 @@ Git hooks are installed separately from bootstrap, since they modify files insid
 - **Vite** for dev server and production builds
 - **React 18+** with TypeScript for component-driven UI
 - **D3.js** for graph visualization (wrapped in React components)
-- **TanStack Query** for server-state management (polling the DIL REST API)
+- **TanStack Query** for server-state management (polling the Cortex REST API)
 - **Tailwind CSS** for styling
 - Auto-served on `localhost:4170` as part of the single central HTTP server
 
 #### Architecture
 
-The UI is a Vite+React SPA that lives inside `src/ui/`. During development, Vite's dev server handles HMR. In production (when installed via npm), the UI is pre-built to `src/ui/dist/` and served as static assets by the DIL server.
+The UI is a Vite+React SPA that lives inside `src/ui/`. During development, Vite's dev server handles HMR. In production (when installed via npm), the UI is pre-built to `src/ui/dist/` and served as static assets by the Cortex server.
 
 The server exposes everything on one HTTP port (`localhost:4170`):
 - `/` — React UI (static assets)
@@ -1082,9 +1082,9 @@ The **Repo Selector** is always visible in the sidebar. Selecting a repo scopes 
 
 #### Auto-Serve Behavior
 
-When the server starts (`npx dev-intel serve`), it:
+When the server starts (`npx cortex serve`), it:
 
-1. Initializes the central SQLite database at `~/.dev-intel/knowledge.db`
+1. Initializes the central SQLite database at `~/.cortex/knowledge.db`
 2. Starts the HTTP server on `localhost:4170` (configurable via `server.port`)
 3. Registers the MCP Streamable HTTP endpoint at `/mcp`
 4. Serves the REST API at `/api/*`
@@ -1092,18 +1092,18 @@ When the server starts (`npx dev-intel serve`), it:
 6. Opens the browser automatically (if `ui.autoOpen` is true in config)
 
 ```bash
-npx dev-intel serve           # Start central server on localhost:4170
-npx dev-intel serve --no-ui   # Server without auto-opening browser
-npx dev-intel serve --port 4180  # Custom port
+npx cortex serve           # Start central server on localhost:4170
+npx cortex serve --no-ui   # Server without auto-opening browser
+npx cortex serve --port 4180  # Custom port
 ```
 
 ---
 
 ## 7. Project Configuration
 
-### Central Config: `~/.dev-intel/config.json`
+### Central Config: `~/.cortex/config.json`
 
-The server-wide configuration lives at `~/.dev-intel/config.json`. It controls server settings, default language server configs, and global graph settings.
+The server-wide configuration lives at `~/.cortex/config.json`. It controls server settings, default language server configs, and global graph settings.
 
 ```json
 {
@@ -1113,7 +1113,7 @@ The server-wide configuration lives at `~/.dev-intel/config.json`. It controls s
     "host": "localhost"
   },
   "storage": {
-    "path": "~/.dev-intel",
+    "path": "~/.cortex",
     "database": "knowledge.db"
   },
   "ui": {
@@ -1141,9 +1141,9 @@ The server-wide configuration lives at `~/.dev-intel/config.json`. It controls s
 }
 ```
 
-### Per-Repo Overrides: `<repo-root>/.dev-intel.json`
+### Per-Repo Overrides: `<repo-root>/.cortex.json`
 
-Individual repos can optionally have a `.dev-intel.json` file at their root to override central defaults. This is the only DIL artifact in a repo's working tree.
+Individual repos can optionally have a `.cortex.json` file at their root to override central defaults. This is the only Cortex artifact in a repo's working tree.
 
 ```json
 {
@@ -1169,30 +1169,30 @@ Merge strategy: per-repo values override central values at the key level. If a r
 
 ```bash
 # Server
-npx dev-intel serve                           # Start central server on localhost:4170
-npx dev-intel serve --port 4180               # Custom port
-npx dev-intel serve --no-ui                   # Don't auto-open browser
+npx cortex serve                           # Start central server on localhost:4170
+npx cortex serve --port 4180               # Custom port
+npx cortex serve --no-ui                   # Don't auto-open browser
 
 # Repo management
-npx dev-intel repos                           # List all registered repos
-npx dev-intel repos add /path/to/repo         # Manually register a repo
-npx dev-intel repos remove <repoId>           # Unregister a repo (KB data deleted)
+npx cortex repos                           # List all registered repos
+npx cortex repos add /path/to/repo         # Manually register a repo
+npx cortex repos remove <repoId>           # Unregister a repo (KB data deleted)
 
 # Per-repo operations (require server to be running)
-npx dev-intel status /path/to/repo            # Show repo KB status + manifest
-npx dev-intel graph /path/to/repo [file]      # Print dependency graph / subgraph
-npx dev-intel rules /path/to/repo [--type=constraint]  # List rules for a repo
-npx dev-intel check /path/to/repo             # Validate manifest (same as pre-commit check)
-npx dev-intel reset /path/to/repo             # Reset KB for a repo (with confirmation)
-npx dev-intel export /path/to/repo            # Export repo KB as JSON
-npx dev-intel import /path/to/repo <file>     # Import KB for a repo from JSON
+npx cortex status /path/to/repo            # Show repo KB status + manifest
+npx cortex graph /path/to/repo [file]      # Print dependency graph / subgraph
+npx cortex rules /path/to/repo [--type=constraint]  # List rules for a repo
+npx cortex check /path/to/repo             # Validate manifest (same as pre-commit check)
+npx cortex reset /path/to/repo             # Reset KB for a repo (with confirmation)
+npx cortex export /path/to/repo            # Export repo KB as JSON
+npx cortex import /path/to/repo <file>     # Import KB for a repo from JSON
 
 # Git hooks
-npx dev-intel install-hooks /path/to/repo     # Install Git hooks for a repo
-npx dev-intel uninstall-hooks /path/to/repo   # Remove Git hooks from a repo
+npx cortex install-hooks /path/to/repo     # Install Git hooks for a repo
+npx cortex uninstall-hooks /path/to/repo   # Remove Git hooks from a repo
 
 # Cross-repo
-npx dev-intel rules --cross-repo              # List cross-repo rules
+npx cortex rules --cross-repo              # List cross-repo rules
 ```
 
 CLI commands that operate on repos communicate with the running server via its REST API. If the server is not running, they print a message asking the user to start it.
@@ -1202,7 +1202,7 @@ CLI commands that operate on repos communicate with the running server via its R
 ## 9. Project Structure
 
 ```
-dev-intel-layer/
+cortex/
 ├── src/
 │   ├── core/
 │   │   ├── types.ts                   # All TypeScript interfaces (repo-aware)
@@ -1274,9 +1274,9 @@ dev-intel-layer/
 │   │   └── utils.ts                  # CLI formatting helpers + server health check
 │   └── index.ts                      # Main entry point
 ├── scripts/
-│   ├── pre-commit.sh                 # Git pre-commit hook template (calls DIL server via HTTP)
-│   ├── post-merge.sh                 # Git post-merge hook template (notifies DIL server)
-│   └── post-checkout.sh              # Git post-checkout hook template (notifies DIL server)
+│   ├── pre-commit.sh                 # Git pre-commit hook template (calls Cortex server via HTTP)
+│   ├── post-merge.sh                 # Git post-merge hook template (notifies Cortex server)
+│   └── post-checkout.sh              # Git post-checkout hook template (notifies Cortex server)
 ├── tests/
 │   ├── core/
 │   ├── repo/
@@ -1410,8 +1410,8 @@ dev-intel-layer/
 
 **Deliverables**:
 - `ManifestService` (generate, validate, compare — DB-stored per-repo)
-- Pre-commit hook shell script (calls DIL server via HTTP)
-- Post-merge and post-checkout hook scripts (notify DIL server via HTTP)
+- Pre-commit hook shell script (calls Cortex server via HTTP)
+- Post-merge and post-checkout hook scripts (notify Cortex server via HTTP)
 - Hook installer CLI command (`install-hooks /path/to/repo`)
 - Integration test: modify file → commit blocked → sync → commit succeeds
 
@@ -1510,7 +1510,7 @@ dev-intel-layer/
 - TanStack Query for data fetching with polling (repo-scoped API calls)
 - Pre-built for production (`vite build`), dev mode with HMR
 
-**Exit Criteria**: Running `npx dev-intel serve` opens a React dashboard at `localhost:4170` where you can switch between repos, visualize graphs, manage rules, and inspect KB state.
+**Exit Criteria**: Running `npx cortex serve` opens a React dashboard at `localhost:4170` where you can switch between repos, visualize graphs, manage rules, and inspect KB state.
 
 **Depends on**: Phase 4
 
@@ -1553,7 +1553,7 @@ Week 4:  Phase 10 (continued) + testing + polish
 ## 14. Security Considerations
 
 - No secrets stored in KB (rules are architectural, not credentials)
-- Central SQLite database is local-only (`~/.dev-intel/`), never transmitted
+- Central SQLite database is local-only (`~/.cortex/`), never transmitted
 - Language servers run locally with no network access
 - HTTP server binds to `localhost` only — not exposed to the network
 - MCP endpoint and REST API are localhost-only (no authentication needed)
@@ -1590,4 +1590,4 @@ Week 4:  Phase 10 (continued) + testing + polish
 - **Metrics**: Track how often KB is consulted, drift frequency
 - **VS Code extension**: Native sidebar instead of web UI
 - **Monorepo packages**: Per-package KBs within a single repo
-- **Remote server**: Optionally run DIL on a remote host for team-wide access (with auth)
+- **Remote server**: Optionally run Cortex on a remote host for team-wide access (with auth)

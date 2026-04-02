@@ -21,7 +21,7 @@ let baseUrl: string;
 let gitRepoPath: string;
 
 beforeAll(async () => {
-  tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dil-api-test-')));
+  tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-api-test-')));
   dbPath = path.join(tmpDir, 'test.db');
   storage = new StorageService(dbPath);
 

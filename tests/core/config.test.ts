@@ -9,12 +9,12 @@ import {
   getLanguageServerConfigs,
   DEFAULT_CONFIG,
 } from '../../src/core/config.js';
-import type { DILConfig, RepoConfig } from '../../src/core/types.js';
+import type { CortexConfig, RepoConfig } from '../../src/core/types.js';
 
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dil-config-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-config-test-'));
 });
 
 afterEach(() => {
@@ -45,14 +45,14 @@ describe('Config — Repo Config', () => {
     expect(config).toBeNull();
   });
 
-  it('loads repo config from .dev-intel.json', () => {
+  it('loads repo config from .cortex.json', () => {
     const repoConfig: RepoConfig = {
       languageServers: { python: { enabled: false } },
       graph: { ignorePaths: ['generated'] },
     };
 
     fs.writeFileSync(
-      path.join(tmpDir, '.dev-intel.json'),
+      path.join(tmpDir, '.cortex.json'),
       JSON.stringify(repoConfig),
     );
 
@@ -85,7 +85,7 @@ describe('Config — Merge', () => {
 
 describe('Config — Language Server Configs', () => {
   it('filters disabled servers', () => {
-    const config: DILConfig = {
+    const config: CortexConfig = {
       ...DEFAULT_CONFIG,
       languageServers: {
         ...DEFAULT_CONFIG.languageServers,

@@ -17,7 +17,7 @@ let dbPath: string;
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dil-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-test-'));
   dbPath = path.join(tmpDir, 'test.db');
   storage = new StorageService(dbPath);
 });

@@ -28,7 +28,7 @@ function createTempGitRepo(): string {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dil-repo-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-repo-test-'));
   dbPath = path.join(tmpDir, 'test.db');
   storage = new StorageService(dbPath);
   repoManager = new RepoManager(storage);

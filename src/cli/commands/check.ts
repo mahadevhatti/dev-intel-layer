@@ -12,7 +12,7 @@ export function checkCommand(): Command {
       if (!data) return;
 
       if (data.stagedHash === 'UNKNOWN') {
-        console.warn(`Repository not registered with DIL: ${absolutePath}`);
+        console.warn(`Repository not registered with Cortex: ${absolutePath}`);
         process.exitCode = 1;
         return;
       }

@@ -9,7 +9,7 @@ let tmpDir: string;
 let repoPath: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dil-hook-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-hook-test-'));
   repoPath = path.join(tmpDir, 'repo');
   fs.mkdirSync(repoPath);
   execSync('git init', { cwd: repoPath, stdio: 'ignore' });
@@ -37,7 +37,7 @@ describe('installHooks', () => {
     expect(stat.mode & 0o111).toBeTruthy();
   });
 
-  it('hook content contains DIL server URL', () => {
+  it('hook content contains Cortex server URL', () => {
     installHooks(repoPath);
     const content = fs.readFileSync(
       path.join(repoPath, '.git', 'hooks', 'pre-commit'),
@@ -46,13 +46,13 @@ describe('installHooks', () => {
     expect(content).toContain('localhost:4170');
   });
 
-  it('overwrites existing DIL hooks', () => {
+  it('overwrites existing Cortex hooks', () => {
     installHooks(repoPath);
     const result = installHooks(repoPath);
     expect(result.installed).toContain('pre-commit');
   });
 
-  it('skips existing non-DIL hooks', () => {
+  it('skips existing non-Cortex hooks', () => {
     const hookPath = path.join(repoPath, '.git', 'hooks', 'pre-commit');
     fs.mkdirSync(path.dirname(hookPath), { recursive: true });
     fs.writeFileSync(hookPath, '#!/bin/sh\necho "custom hook"', { mode: 0o755 });
@@ -69,7 +69,7 @@ describe('installHooks', () => {
 });
 
 describe('uninstallHooks', () => {
-  it('removes DIL hooks', () => {
+  it('removes Cortex hooks', () => {
     installHooks(repoPath);
     const result = uninstallHooks(repoPath);
     expect(result.removed).toContain('pre-commit');
@@ -77,7 +77,7 @@ describe('uninstallHooks', () => {
     expect(result.removed).toContain('post-checkout');
   });
 
-  it('does not remove non-DIL hooks', () => {
+  it('does not remove non-Cortex hooks', () => {
     const hookPath = path.join(repoPath, '.git', 'hooks', 'pre-commit');
     fs.mkdirSync(path.dirname(hookPath), { recursive: true });
     fs.writeFileSync(hookPath, '#!/bin/sh\necho "custom"', { mode: 0o755 });

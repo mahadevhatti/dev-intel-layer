@@ -28,7 +28,7 @@ export function ConflictResolver() {
         <Info size={16} className="mt-0.5 shrink-0 text-indigo-400" />
         <div className="text-xs text-indigo-300/80">
           <strong>How conflicts work:</strong> When you merge a branch, the post-merge hook notifies
-          the DIL server. If both branches modified the same rules or node summaries, conflicts are
+          the Cortex server. If both branches modified the same rules or node summaries, conflicts are
           surfaced here. You can resolve them as keep-local, accept-incoming, or provide a custom
           resolution. AI agents can also call{' '}
           <code className="text-indigo-400">get_conflicts</code> and{' '}

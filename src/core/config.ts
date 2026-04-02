@@ -1,17 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { DILConfig, RepoConfig, LanguageServerConfig } from './types.js';
+import type { CortexConfig, RepoConfig, LanguageServerConfig } from './types.js';
 import { ConfigError } from './errors.js';
 
-const DEFAULT_CONFIG: DILConfig = {
+const DEFAULT_CONFIG: CortexConfig = {
   version: 1,
   server: {
     port: 4170,
     host: 'localhost',
   },
   storage: {
-    path: path.join(os.homedir(), '.dev-intel'),
+    path: path.join(os.homedir(), '.cortex'),
     database: 'knowledge.db',
   },
   ui: {
@@ -101,18 +101,18 @@ export function getCentralConfigPath(): string {
   return path.join(resolvePath(DEFAULT_CONFIG.storage.path), 'config.json');
 }
 
-export function getStoragePath(config?: DILConfig): string {
+export function getStoragePath(config?: CortexConfig): string {
   const storagePath = config?.storage?.path ?? DEFAULT_CONFIG.storage.path;
   return resolvePath(storagePath);
 }
 
-export function getDatabasePath(config?: DILConfig): string {
+export function getDatabasePath(config?: CortexConfig): string {
   const storagePath = getStoragePath(config);
   const dbName = config?.storage?.database ?? DEFAULT_CONFIG.storage.database;
   return path.join(storagePath, dbName);
 }
 
-export function loadCentralConfig(): DILConfig {
+export function loadCentralConfig(): CortexConfig {
   const configPath = getCentralConfigPath();
 
   if (!fs.existsSync(configPath)) {
@@ -121,8 +121,8 @@ export function loadCentralConfig(): DILConfig {
 
   try {
     const raw = fs.readFileSync(configPath, 'utf-8');
-    const userConfig = JSON.parse(raw) as Partial<DILConfig>;
-    return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, userConfig as unknown as Record<string, unknown>) as unknown as DILConfig;
+    const userConfig = JSON.parse(raw) as Partial<CortexConfig>;
+    return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, userConfig as unknown as Record<string, unknown>) as unknown as CortexConfig;
   } catch (err) {
     throw new ConfigError(
       `Failed to load config from ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
@@ -131,7 +131,7 @@ export function loadCentralConfig(): DILConfig {
 }
 
 export function loadRepoConfig(repoPath: string): RepoConfig | null {
-  const configPath = path.join(repoPath, '.dev-intel.json');
+  const configPath = path.join(repoPath, '.cortex.json');
 
   if (!fs.existsSync(configPath)) {
     return null;
@@ -147,12 +147,12 @@ export function loadRepoConfig(repoPath: string): RepoConfig | null {
   }
 }
 
-export function mergeRepoConfig(central: DILConfig, repo: RepoConfig | null): DILConfig {
+export function mergeRepoConfig(central: CortexConfig, repo: RepoConfig | null): CortexConfig {
   if (!repo) return central;
-  return deepMerge(central as unknown as Record<string, unknown>, repo as unknown as Record<string, unknown>) as unknown as DILConfig;
+  return deepMerge(central as unknown as Record<string, unknown>, repo as unknown as Record<string, unknown>) as unknown as CortexConfig;
 }
 
-export function getLanguageServerConfigs(config: DILConfig): LanguageServerConfig[] {
+export function getLanguageServerConfigs(config: CortexConfig): LanguageServerConfig[] {
   return Object.entries(config.languageServers)
     .filter(([_, ls]) => ls.enabled !== false)
     .map(([id, ls]) => ({
@@ -167,14 +167,14 @@ export function getLanguageServerConfigs(config: DILConfig): LanguageServerConfi
     }));
 }
 
-export function ensureStorageDir(config?: DILConfig): void {
+export function ensureStorageDir(config?: CortexConfig): void {
   const storagePath = getStoragePath(config);
   if (!fs.existsSync(storagePath)) {
     fs.mkdirSync(storagePath, { recursive: true });
   }
 }
 
-export function saveCentralConfig(config: DILConfig): void {
+export function saveCentralConfig(config: CortexConfig): void {
   const configPath = getCentralConfigPath();
   ensureStorageDir(config);
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');

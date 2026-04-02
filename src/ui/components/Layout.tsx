@@ -130,11 +130,11 @@ export function Layout() {
         {/* Logo */}
         <div className="flex items-center gap-2.5 border-b border-zinc-800 px-5 py-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold">
-            DI
+            Cx
           </div>
           <div>
-            <div className="text-sm font-semibold text-zinc-100">Dev Intel</div>
-            <div className="text-[11px] text-zinc-500">Intelligence Layer</div>
+            <div className="text-sm font-semibold text-zinc-100">Cortex</div>
+            <div className="text-[11px] text-zinc-500">Intelligence Server</div>
           </div>
         </div>
 
