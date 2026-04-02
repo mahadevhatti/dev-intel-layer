@@ -378,7 +378,7 @@ export function GraphViewer() {
     return (
       <div className="space-y-4">
         <div className="h-8 w-64 rounded-lg bg-zinc-800 animate-pulse" />
-        <div className="card h-[600px] animate-pulse bg-zinc-800/50" />
+        <div className="card h-[calc(100vh-12rem)] animate-pulse bg-zinc-800/50" />
       </div>
     );
   }
@@ -479,7 +479,7 @@ export function GraphViewer() {
       </div>
 
       {!data || data.nodes.length === 0 ? (
-        <div className="card flex h-96 flex-col items-center justify-center">
+        <div className="card flex h-[calc(100vh-12rem)] flex-col items-center justify-center">
           <GitGraph size={48} className="mb-3 text-zinc-700" />
           <p className="text-sm text-zinc-400">No graph data yet.</p>
           <p className="mt-1 text-xs text-zinc-600">
@@ -487,7 +487,7 @@ export function GraphViewer() {
           </p>
         </div>
       ) : (
-        <div ref={containerRef} className="card relative h-[600px] overflow-hidden p-0">
+        <div ref={containerRef} className="card relative h-[calc(100vh-12rem)] overflow-hidden p-0">
           <svg ref={svgRef} className="h-full w-full" />
           <Legend languages={languages} colorMode={colorMode} dirMap={dirMapRef.current} />
           {selectedNode && (

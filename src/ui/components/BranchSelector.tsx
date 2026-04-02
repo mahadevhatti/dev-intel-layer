@@ -1,9 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { useManifest } from '../hooks/useManifest';
 import { useRepoDetail } from '../hooks/useRepos';
+import { useState } from 'react';
 import {
   GitBranch, Info, Clock, Hash, FileText, GitGraph, BookOpen,
-  CheckCircle, AlertCircle, ArrowRightLeft,
+  CheckCircle, AlertCircle, ArrowRightLeft, Copy, Check,
 } from 'lucide-react';
 
 function StatusDot({ status }: { status: string }) {
@@ -14,6 +15,36 @@ function StatusDot({ status }: { status: string }) {
     initialized: 'bg-zinc-500',
   };
   return <span className={`h-2 w-2 rounded-full inline-block ${colorMap[status] ?? 'bg-zinc-600'}`} />;
+}
+
+function CommitHash({ hash, fileCount }: { hash: string; fileCount: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard.writeText(hash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="font-mono hover:text-zinc-300 transition-colors"
+        title={expanded ? 'Click to collapse' : 'Click to show full hash'}
+      >
+        {expanded ? hash : hash.substring(0, 7)}
+      </button>
+      {expanded && (
+        <button onClick={copy} className="text-zinc-600 hover:text-zinc-400" title="Copy full hash">
+          {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+        </button>
+      )}
+      <span className="text-zinc-700">·</span>
+      <span>{fileCount} files indexed</span>
+    </div>
+  );
 }
 
 export function BranchSelector() {
@@ -56,17 +87,11 @@ export function BranchSelector() {
             <div className="font-mono text-sm font-medium text-zinc-200">
               {manifest?.branchName ?? 'unknown'}
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
-              {manifest ? (
-                <>
-                  <span className="font-mono">{manifest.baseCommit.substring(0, 10)}</span>
-                  <span className="text-zinc-700">·</span>
-                  <span>{manifest.indexedFileCount} files indexed</span>
-                </>
-              ) : (
-                <span>No manifest available</span>
-              )}
-            </div>
+            {manifest ? (
+              <CommitHash hash={manifest.baseCommit} fileCount={manifest.indexedFileCount} />
+            ) : (
+              <div className="text-[11px] text-zinc-500 mt-0.5">No manifest available</div>
+            )}
           </div>
           {repo && <StatusDot status={repo.status} />}
         </div>

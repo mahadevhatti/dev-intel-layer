@@ -26,17 +26,31 @@ function CopyableHash({ label, value, icon: Icon }: { label: string; value: stri
         <Icon size={16} className="shrink-0 text-zinc-500" />
         <div className="min-w-0 flex-1">
           <div className="text-[11px] text-zinc-500">{label}</div>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="font-mono text-sm text-zinc-200 hover:text-zinc-100 flex items-center gap-1"
-          >
-            {expanded ? value : value.substring(0, 16) + '...'}
-            {!expanded && <ChevronRight size={12} className="text-zinc-600" />}
-          </button>
+          {expanded ? (
+            <div className="mt-1 rounded bg-zinc-800 px-2 py-1.5 flex items-center gap-2">
+              <span className="font-mono text-xs text-zinc-200 break-all">{value}</span>
+              <button onClick={copy} className="btn-ghost p-1 shrink-0" title="Copy">
+                {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+              </button>
+              <button onClick={() => setExpanded(false)} className="btn-ghost p-1 shrink-0 text-zinc-500 hover:text-zinc-300" title="Collapse">
+                <ChevronDown size={10} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setExpanded(true)}
+              className="font-mono text-sm text-zinc-200 hover:text-zinc-100 flex items-center gap-1"
+            >
+              {value.substring(0, 12)}...
+              <ChevronRight size={12} className="text-zinc-600" />
+            </button>
+          )}
         </div>
-        <button onClick={copy} className="btn-ghost p-1 shrink-0" title="Copy">
-          {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-        </button>
+        {!expanded && (
+          <button onClick={copy} className="btn-ghost p-1 shrink-0" title="Copy">
+            {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+          </button>
+        )}
       </div>
     </div>
   );
