@@ -179,6 +179,66 @@ A web UI at `localhost:4170` for visual management:
 
 ---
 
+## Screenshots
+
+### Dashboard
+
+Cross-repo overview showing registered repositories, sync status, server info, and cross-repo rules at a glance.
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard — cross-repo overview" width="900" />
+</p>
+
+### Dependency Graph
+
+Interactive D3 force-directed graph visualizing all file-level imports and dependencies across the codebase. Filterable by language and colorable by language or directory.
+
+<p align="center">
+  <img src="docs/screenshots/graph-viewer.png" alt="Dependency Graph — interactive D3 visualization" width="900" />
+</p>
+
+### Rule Manager
+
+Full CRUD interface for knowledge rules (constraints, lessons, preferences) with inline editing, type/scope filters, tag display, and version tracking.
+
+<p align="center">
+  <img src="docs/screenshots/rule-manager.png" alt="Rule Manager — knowledge rule CRUD" width="900" />
+</p>
+
+### Manifest Status
+
+Real-time synchronization state showing SHA-256 hashes, branch info, node/edge/rule counts, and a collapsible file tree of all indexed files.
+
+<p align="center">
+  <img src="docs/screenshots/manifest-status.png" alt="Manifest Status — sync state and drift indicators" width="900" />
+</p>
+
+### Context Inspector
+
+Preview the structured context that an AI agent receives for any file — including applicable rules, dependencies, and graph neighbors.
+
+<p align="center">
+  <img src="docs/screenshots/context-inspector.png" alt="Context Inspector — AI agent context preview" width="900" />
+</p>
+
+### Branches
+
+Branch-aware knowledge base management — view branches, their rule counts, and switch KB context.
+
+<p align="center">
+  <img src="docs/screenshots/branches.png" alt="Branches — branch-aware KB management" width="900" />
+</p>
+
+### Conflict Resolver
+
+Surface and resolve knowledge base conflicts that arise during branch merges.
+
+<p align="center">
+  <img src="docs/screenshots/conflicts.png" alt="Conflict Resolver — KB merge conflict resolution" width="900" />
+</p>
+
+---
+
 ## MCP Tools
 
 All repo-scoped tools accept a `repoPath` parameter to identify the target project.
