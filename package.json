@@ -1,0 +1,78 @@
+{
+  "name": "dev-intel-layer",
+  "version": "0.1.0",
+  "description": "Local-first intelligence layer for AI coding agents — persistent knowledge base, semantic dependency graph, and deterministic enforcement via MCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "dev-intel": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc && npm run build:ui",
+    "build:server": "tsc",
+    "build:ui": "vite build --config src/ui/vite.config.ts",
+    "dev": "tsx watch src/index.ts",
+    "dev:ui": "vite --config src/ui/vite.config.ts",
+    "start": "node dist/index.js",
+    "serve": "tsx src/cli/index.ts serve",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ --ext .ts,.tsx",
+    "lint:fix": "eslint src/ --ext .ts,.tsx --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx,json}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,json}'",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "developer-intelligence",
+    "knowledge-base",
+    "lsp",
+    "dependency-graph"
+  ],
+  "author": "Mahadev Hatti",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@tanstack/react-query": "^5.96.1",
+    "better-sqlite3": "^11.8.1",
+    "commander": "^13.1.0",
+    "d3": "^7.9.0",
+    "express": "^5.1.0",
+    "lucide-react": "^1.7.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.2",
+    "simple-git": "^3.27.0",
+    "uuid": "^11.1.0",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/d3": "^7.4.3",
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9.24.0",
+    "postcss": "^8.5.8",
+    "prettier": "^3.5.3",
+    "tailwindcss": "^4.2.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

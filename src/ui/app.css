@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@utility card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-zinc-800);
+  background-color: var(--color-zinc-900);
+  padding: 1.25rem;
+}
+
+@utility badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+@utility badge-constraint {
+  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
+  color: var(--color-red-400);
+}
+
+@utility badge-lesson {
+  background-color: color-mix(in srgb, var(--color-amber-500) 10%, transparent);
+  color: var(--color-amber-400);
+}
+
+@utility badge-preference {
+  background-color: color-mix(in srgb, var(--color-blue-500) 10%, transparent);
+  color: var(--color-blue-400);
+}
+
+@utility badge-status-ready {
+  background-color: color-mix(in srgb, var(--color-emerald-500) 10%, transparent);
+  color: var(--color-emerald-400);
+}
+
+@utility badge-status-scanning {
+  background-color: color-mix(in srgb, var(--color-amber-500) 10%, transparent);
+  color: var(--color-amber-400);
+}
+
+@utility badge-status-error {
+  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
+  color: var(--color-red-400);
+}
+
+@utility badge-status-initialized {
+  background-color: color-mix(in srgb, var(--color-zinc-500) 10%, transparent);
+  color: var(--color-zinc-400);
+}
+
+@utility input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-zinc-700);
+  background-color: var(--color-zinc-800);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-zinc-100);
+  &:focus {
+    border-color: var(--color-indigo-500);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--color-indigo-500);
+  }
+}
+
+@utility select {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-zinc-700);
+  background-color: var(--color-zinc-800);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-zinc-100);
+  appearance: none;
+  &:focus {
+    border-color: var(--color-indigo-500);
+    outline: none;
+    box-shadow: 0 0 0 1px var(--color-indigo-500);
+  }
+}
+
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background-color: var(--color-indigo-600);
+  color: white;
+  transition: background-color 0.15s;
+  cursor: pointer;
+  &:hover { background-color: var(--color-indigo-500); }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+@utility btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--color-zinc-700);
+  background-color: var(--color-zinc-800);
+  color: var(--color-zinc-200);
+  transition: background-color 0.15s;
+  cursor: pointer;
+  &:hover { background-color: var(--color-zinc-700); }
+}
+
+@utility btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-zinc-400);
+  background: transparent;
+  transition: background-color 0.15s, color 0.15s;
+  cursor: pointer;
+  &:hover {
+    background-color: var(--color-zinc-800);
+    color: var(--color-zinc-200);
+  }
+}
