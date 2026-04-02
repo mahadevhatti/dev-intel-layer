@@ -10,9 +10,14 @@ if ! curl -s --max-time 2 "$DIL_SERVER/api/health" > /dev/null 2>&1; then
   exit 0
 fi
 
-STAGED_FILES=$(git diff --cached --name-only | sort)
-DIFF_CONTENT=$(git diff --cached)
-CURRENT_HASH=$(printf '%s\n---\n%s' "$STAGED_FILES" "$DIFF_CONTENT" | shasum -a 256 | cut -d' ' -f1)
+CURRENT_HASH=$(node -e "
+  const crypto = require('crypto');
+  const { execSync } = require('child_process');
+  const staged = execSync('git diff --cached --name-only', {encoding:'utf-8'}).trim().split('\n').filter(Boolean).sort();
+  const diff = execSync('git diff --cached', {encoding:'utf-8'});
+  const payload = staged.join('\n') + '\n---\n' + diff;
+  process.stdout.write(crypto.createHash('sha256').update(payload).digest('hex'));
+")
 
 MANIFEST_HASH=$(curl -s "$DIL_SERVER/api/repos/manifest?repoPath=$REPO_ROOT" \
   | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).stagedHash)}catch{console.log('UNKNOWN')}})")
