@@ -1,0 +1,411 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square" alt="Node.js >= 20" />
+  <img src="https://img.shields.io/badge/typescript-5.8-blue?style=flat-square" alt="TypeScript 5.8" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License" />
+  <img src="https://img.shields.io/badge/MCP-Streamable%20HTTP-purple?style=flat-square" alt="MCP over Streamable HTTP" />
+  <img src="https://img.shields.io/badge/status-Phase%201-orange?style=flat-square" alt="Status: Phase 1" />
+</p>
+
+<h1 align="center">Developer Intelligence Layer</h1>
+
+<p align="center">
+  <strong>A local-first intelligence server that gives AI coding agents persistent memory, structural awareness, and deterministic enforcement across your entire codebase.</strong>
+</p>
+
+<p align="center">
+  <code>AI suggests. Git validates. Manifest enforces. Human approves.</code>
+</p>
+
+---
+
+## The Problem
+
+AI coding agents (Cursor, Claude Code, Copilot) generate code without awareness of:
+
+- **Project architecture** — they suggest patterns that contradict your norms
+- **Past decisions** — lessons learned in previous PRs are forgotten
+- **Dependency structure** — they modify files without understanding impact
+- **Conventions** — nothing prevents a commit that silently breaks them
+
+There is no system that maintains a **persistent, structured knowledge base** of a codebase and exposes it to **any** AI agent in a deterministic, verifiable way.
+
+## The Solution
+
+**DIL** is a central MCP server running on `localhost` that:
+
+1. **Captures** developer intent as structured knowledge (rules, lessons, preferences)
+2. **Maps** codebase structure as a semantic dependency graph via LSP
+3. **Syncs** knowledge with code changes through Git
+4. **Enforces** synchronization deterministically via pre-commit hooks + SHA-256 manifests
+5. **Exposes** everything to AI agents via [Model Context Protocol](https://modelcontextprotocol.io/) over Streamable HTTP
+
+One server process. Multiple repos. Multiple agents. Zero cloud dependencies.
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      AI Agents (Multiple Clients)                    │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌───────────────────┐  │
+│  │ Cursor (Proj A)  │  │ Cursor (Proj B)  │  │ Claude Code (C)   │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └────────┬──────────┘  │
+└───────────┼──────────────────────┼──────────────────────┼────────────┘
+            │     MCP over Streamable HTTP (localhost:4170/mcp)
+            ▼                      ▼                      ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    DIL Central Server (localhost:4170)                │
+│                                                                      │
+│   /mcp ─── MCP Endpoint        /api/* ─── REST API                   │
+│   / ────── React Dashboard      Repo Router ── per-repo routing      │
+│                                                                      │
+│   ┌────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
+│   │ Repo   │ │Knowledge │ │ Semantic │ │   Git    │ │ Manifest  │  │
+│   │Manager │ │  Store   │ │  Graph   │ │ Service  │ │  Engine   │  │
+│   └────────┘ └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
+│                                                                      │
+│   Storage: ~/.dev-intel/knowledge.db (single central SQLite DB)      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Node.js** >= 20
+- **Git** installed and available in PATH
+
+### Install & Run
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/dev-intel-layer.git
+cd dev-intel-layer
+
+# Install dependencies
+npm install
+
+# Build the project (server + React UI)
+npm run build
+
+# Start the central server
+npx dev-intel serve
+```
+
+The server starts at **http://localhost:4170** with:
+- `/` — React dashboard
+- `/mcp` — MCP endpoint for AI agents
+- `/api/*` — REST API
+
+### Connect Your AI Agent
+
+Add this to your IDE's MCP configuration (e.g., Cursor `mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "dev-intel": {
+      "url": "http://localhost:4170/mcp"
+    }
+  }
+}
+```
+
+No `command`, no `args` — the server is already running. The agent just connects.
+
+---
+
+## Features
+
+### Declarative Knowledge (Memory)
+
+Capture developer intent as versioned, scoped knowledge rules:
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| **Constraint** | Hard rules that must be followed | *"Use apiClient for all HTTP requests"* |
+| **Lesson** | Past issues to avoid | *"Avoid lodash v4.17.20 — prototype pollution"* |
+| **Preference** | Style/architectural choices | *"Prefer composition over inheritance"* |
+
+Rules can be scoped as **cross-repo** (all projects), **global** (all branches in a repo), or **branch-specific**.
+
+### Semantic Dependency Graph (via LSP)
+
+Language-agnostic code structure mapping using Language Server Protocol:
+
+- Extracts functions, classes, interfaces, imports, and call hierarchies
+- Builds a queryable dependency graph stored in SQLite
+- Supports incremental rebuilds — only re-analyzes changed files
+- Adding a new language = adding a config entry, not writing a parser
+
+**Built-in language server support:** TypeScript/JS, Python, Rust, Go, Java
+
+### Deterministic Manifest Enforcement
+
+SHA-256 manifest hashing ensures knowledge stays in sync with code:
+
+- Pre-commit hooks query the DIL server to validate staged changes against the manifest
+- Commits are blocked when the knowledge base drifts from the code
+- Sync → approve → commit: a verifiable, human-in-the-loop workflow
+
+### Multi-Repo Management
+
+One server manages all your projects:
+
+- Repos are auto-discovered on first MCP call (no manual init required)
+- Each repo gets isolated rules, graph, and manifest
+- Cross-repo rules apply everywhere
+
+### Branch-Aware Knowledge
+
+Each branch maintains its own KB view:
+
+- Branches inherit from parent and store only deltas
+- Branch switches preserve context automatically via Git hooks
+- Merge conflicts in the KB are surfaced and resolvable via MCP
+
+### React Dashboard
+
+A web UI at `localhost:4170` for visual management:
+
+- **Dashboard** — cross-repo overview with sync status
+- **Graph Viewer** — interactive D3 force-directed dependency visualization
+- **Rule Manager** — CRUD with inline editing, filtering, version history
+- **Manifest Status** — real-time sync state and drift indicators
+- **Context Inspector** — preview exactly what an AI agent sees for any file
+
+---
+
+## MCP Tools
+
+All repo-scoped tools accept a `repoPath` parameter to identify the target project.
+
+| Tool | Description |
+|------|-------------|
+| `list_repos` | List all registered repos with status |
+| `get_repo_status` | Detailed status of a specific repo |
+| `sync_kb` | Collect sync data (staged files, diff, affected nodes, rules) |
+| `apply_kb_updates` | Persist human-approved KB updates and refresh manifest |
+| `get_context` | Get structured context for AI agent coding assistance |
+| `get_rules` | List knowledge rules with optional filters |
+| `add_rule` | Add a new knowledge rule |
+| `update_rule` | Modify an existing rule (auto-increments version) |
+| `get_graph` | Query the dependency graph or subgraph |
+| `get_manifest` | Read current manifest state |
+| `init_kb` | Explicitly bootstrap a repo's knowledge base |
+
+### MCP Resources
+
+| URI | Description |
+|-----|-------------|
+| `kb://repos` | All registered repos |
+| `kb://repos/{repoId}/manifest` | Manifest for a repo |
+| `kb://repos/{repoId}/rules` | Active rules for a repo |
+| `kb://repos/{repoId}/graph` | Full dependency graph |
+| `kb://repos/{repoId}/stats` | KB statistics |
+| `kb://rules/cross-repo` | Cross-repo rules |
+
+---
+
+## REST API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Server health check |
+| GET | `/api/repos` | List all repos |
+| POST | `/api/repos` | Register a repo by path |
+| GET | `/api/repos/:repoId` | Repo details + manifest + stats |
+| GET | `/api/repos/:repoId/graph` | Query dependency graph |
+| POST | `/api/repos/:repoId/graph/build` | Trigger graph build for a repo |
+| GET | `/api/repos/:repoId/rules` | List rules (filterable) |
+| POST | `/api/repos/:repoId/rules` | Create a rule |
+| PUT | `/api/repos/:repoId/rules/:id` | Update a rule |
+| GET | `/api/repos/:repoId/manifest` | Current manifest |
+| GET | `/api/repos/:repoId/context` | Context for a file |
+| GET | `/api/repos/:repoId/stats` | Node/edge/rule counts |
+| GET | `/api/rules/cross-repo` | Cross-repo rules |
+
+---
+
+## CLI Commands
+
+```bash
+# Server
+npx dev-intel serve                        # Start on localhost:4170
+npx dev-intel serve --port 4180            # Custom port
+npx dev-intel serve --no-ui                # Skip auto-opening browser
+
+# Repo management
+npx dev-intel repos                        # List registered repos
+npx dev-intel repos add /path/to/repo      # Manually register a repo
+npx dev-intel repos remove <repoId>        # Unregister a repo
+
+# Per-repo operations (server must be running)
+npx dev-intel status /path/to/repo         # KB status + manifest
+npx dev-intel check /path/to/repo          # Validate manifest (like pre-commit)
+
+# Git hooks
+npx dev-intel install-hooks /path/to/repo  # Install pre-commit, post-merge, post-checkout
+npx dev-intel uninstall-hooks /path/to/repo
+```
+
+---
+
+## Configuration
+
+### Central Config: `~/.dev-intel/config.json`
+
+```json
+{
+  "version": 1,
+  "server": { "port": 4170, "host": "localhost" },
+  "storage": { "path": "~/.dev-intel", "database": "knowledge.db" },
+  "ui": { "autoOpen": true },
+  "languageServers": {
+    "typescript": { "enabled": true, "command": "typescript-language-server", "args": ["--stdio"] },
+    "python": { "enabled": true, "command": "pyright-langserver", "args": ["--stdio"] }
+  },
+  "graph": {
+    "ignorePaths": ["node_modules", "dist", "build", ".git", "coverage"],
+    "maxFileSize": 1048576
+  },
+  "lspPool": { "idleTimeoutMs": 300000 }
+}
+```
+
+### Per-Repo Overrides: `<repo-root>/.dev-intel.json`
+
+```json
+{
+  "languageServers": { "python": { "enabled": false } },
+  "graph": { "ignorePaths": ["node_modules", "dist", "generated"] }
+}
+```
+
+Per-repo values override central defaults at the key level.
+
+---
+
+## Project Structure
+
+```
+dev-intel-layer/
+├── src/
+│   ├── core/                  # Types, config, SQLite storage, errors
+│   ├── repo/                  # Repo manager + request router
+│   ├── git/                   # Git operations, diff parsing, hook installer
+│   ├── lsp/                   # Language server registry, pool, protocol helpers
+│   ├── graph/                 # Graph builder (LSP), queries, incremental updates
+│   ├── knowledge/             # Rule service, branch service, conflict resolver
+│   ├── manifest/              # Manifest generation, SHA-256 hash computation
+│   ├── sync/                  # Sync orchestration + data collection for agents
+│   ├── server/                # Express HTTP server, MCP endpoint, REST routes
+│   ├── cli/                   # CLI entry point + commands (serve, repos, status, etc.)
+│   ├── ui/                    # Vite + React + Tailwind dashboard
+│   │   ├── components/        # Dashboard, GraphViewer, RuleManager, etc.
+│   │   ├── hooks/             # TanStack Query hooks (useRepos, useGraph, etc.)
+│   │   └── lib/               # API client, D3 graph layout config
+│   └── index.ts               # Library exports
+├── scripts/                   # Git hook templates (pre-commit, post-merge, etc.)
+├── tests/                     # Vitest test suites (core, git, knowledge, server, etc.)
+├── docs/                      # Project requirements specification
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
+```
+
+---
+
+## Development
+
+```bash
+# Start the backend server (with hot reload)
+npm run serve
+
+# Start the UI dev server (HMR on port 4171, proxies API to 4170)
+npm run dev:ui
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Type checking
+npm run typecheck
+
+# Lint & format
+npm run lint
+npm run format
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Runtime** | Node.js >= 20 |
+| **Language** | TypeScript 5.8 (strict mode) |
+| **MCP** | @modelcontextprotocol/sdk (Streamable HTTP) |
+| **HTTP** | Express 5 |
+| **Database** | better-sqlite3 (central SQLite) |
+| **Git** | simple-git |
+| **LSP** | vscode-jsonrpc + vscode-languageserver-protocol |
+| **CLI** | Commander |
+| **Validation** | Zod |
+| **UI** | React 19 + Vite + Tailwind CSS 4 |
+| **Graphs** | D3.js (force-directed) |
+| **Data Fetching** | TanStack Query |
+| **Icons** | Lucide React |
+| **Testing** | Vitest |
+
+---
+
+## How It Works
+
+The knowledge synchronization workflow:
+
+```
+1. Developer stages changes
+2. AI agent calls sync_kb → DIL returns staged files, diff, affected nodes, existing rules
+3. AI agent analyzes the data and proposes KB updates
+4. Developer reviews and approves
+5. AI agent calls apply_kb_updates → DIL persists changes, refreshes manifest
+6. Developer commits → pre-commit hook verifies manifest hash matches staged hash
+7. Commit succeeds ✅
+```
+
+If the knowledge base is out of sync, the pre-commit hook blocks the commit and guides the developer to run a sync through their AI agent.
+
+---
+
+## Design Principles
+
+- **AI suggests, humans approve** — no auto-applied knowledge changes
+- **Local-first** — all data stays on your machine, zero cloud dependencies
+- **Agent-agnostic** — any MCP client connects over HTTP; not tied to one IDE
+- **Language-agnostic** — LSP-based graph engine; new languages via config
+- **Git-native** — hooks enforce sync; branches maintain independent KB views
+- **Deterministic** — SHA-256 manifests make sync state verifiable and reproducible
+
+---
+
+## Non-Goals
+
+- **Not** an AI model — it is a context engine *for* AI agents
+- **Not** a Git replacement — it complements Git
+- **Not** cloud-dependent — fully local, localhost-only
+- **Not** a linter or formatter — it captures intent, not style
+
+---
+
+## License
+
+[MIT](LICENSE) — Mahadev Hatti
