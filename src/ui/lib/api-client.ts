@@ -152,5 +152,17 @@ export interface ContextResult {
   relatedFiles: string[];
 }
 
-export const fetchContext = (repoId: string, file: string) =>
-  request<ContextResult>(`/repos/${repoId}/context?file=${encodeURIComponent(file)}`);
+export const fetchContext = (repoId: string, file: string, depth?: number) =>
+  request<ContextResult>(`/repos/${repoId}/context?file=${encodeURIComponent(file)}${depth ? `&depth=${depth}` : ''}`);
+
+// ─── Graph Build ─────────────────────────────────────────────────────
+
+export interface GraphBuildResult {
+  nodesCreated: number;
+  edgesCreated: number;
+  filesScanned: number;
+  manifest: Manifest;
+}
+
+export const buildRepoGraph = (repoId: string) =>
+  request<GraphBuildResult>(`/repos/${repoId}/graph/build`, { method: 'POST', body: JSON.stringify({}) });
