@@ -1,4 +1,9 @@
 import { Router, type Request, type Response } from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
+import { v4 as uuidv4 } from 'uuid';
+import { simpleGit } from 'simple-git';
+import type { GraphNode, GraphEdge } from '../core/types.js';
 import type { ServerDependencies } from './httpServer.js';
 import { DILError } from '../core/errors.js';
 
@@ -21,6 +26,23 @@ export function createApiRoutes(deps: ServerDependencies): Router {
     try {
       const repos = repoManager.listRepos();
       res.json({ repos });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.post('/repos', async (req: Request, res: Response) => {
+    try {
+      const { path: repoPath } = req.body;
+      if (!repoPath) {
+        res.status(400).json({ error: 'MISSING_PARAM', message: 'path is required' });
+        return;
+      }
+      const repo = await repoManager.resolveRepo(repoPath);
+      const languages = await repoManager.detectLanguages(repo.path);
+      repoManager.updateLanguages(repo.id, languages);
+      repo.languages = languages;
+      res.status(201).json({ repo });
     } catch (err) {
       handleError(res, err);
     }
@@ -86,6 +108,96 @@ export function createApiRoutes(deps: ServerDependencies): Router {
         const edges = graphQuery.listEdges(repoId);
         res.json({ nodes, edges });
       }
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.post('/repos/:repoId/graph/build', async (req: Request, res: Response) => {
+    try {
+      const ctx = repoRouter.resolveById(req.params.repoId);
+      const repoId = ctx.repo.id;
+      const rootPath = ctx.repo.path;
+      const ignorePaths = (req.body.ignorePaths as string[]) ?? ['node_modules', '.git', 'dist', 'coverage'];
+
+      repoManager.updateStatus(repoId, 'scanning');
+
+      const git = simpleGit(rootPath);
+      const commitHash = await git.revparse(['HEAD']);
+      const filesStr = await git.raw(['ls-files']);
+      const allFiles = filesStr.trim().split('\n').filter(Boolean);
+
+      const sourceExts = new Set(['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.py', '.rs', '.go', '.java']);
+      const sourceFiles = allFiles.filter(f => {
+        const ext = path.extname(f).toLowerCase();
+        return sourceExts.has(ext) && !ignorePaths.some(ig => f.includes(ig));
+      });
+
+      const langMap: Record<string, string> = {
+        '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
+        '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+        '.py': 'python', '.rs': 'rust', '.go': 'go', '.java': 'java',
+      };
+
+      let nodesCreated = 0;
+      let edgesCreated = 0;
+
+      for (const filePath of sourceFiles) {
+        const ext = path.extname(filePath).toLowerCase();
+        const language = langMap[ext] ?? 'unknown';
+        const nodeIdVal = `${repoId}:${filePath}`;
+
+        const fullPath = path.join(rootPath, filePath);
+        let content = '';
+        try { content = fs.readFileSync(fullPath, 'utf-8'); } catch { continue; }
+
+        const symbols = parseSymbolsFromContent(content, language);
+
+        const node: GraphNode = {
+          id: nodeIdVal,
+          repoId,
+          filePath,
+          language,
+          symbols,
+          summary: '',
+          responsibilities: [],
+          lastAnalyzed: new Date().toISOString(),
+          commitHash: commitHash.trim(),
+        };
+        storage.upsertGraphNode(node);
+        nodesCreated++;
+      }
+
+      for (const filePath of sourceFiles) {
+        const fullPath = path.join(rootPath, filePath);
+        let content = '';
+        try { content = fs.readFileSync(fullPath, 'utf-8'); } catch { continue; }
+
+        const imports = parseImports(content);
+        const sourceNodeId = `${repoId}:${filePath}`;
+
+        for (const imp of imports) {
+          const resolvedTarget = resolveImportPath(filePath, imp, sourceFiles);
+          if (!resolvedTarget) continue;
+
+          const targetNodeId = `${repoId}:${resolvedTarget}`;
+          const edge: GraphEdge = {
+            id: uuidv4(),
+            repoId,
+            source: sourceNodeId,
+            target: targetNodeId,
+            relationship: 'imports',
+            symbols: [imp],
+          };
+          storage.upsertGraphEdge(edge);
+          edgesCreated++;
+        }
+      }
+
+      repoManager.updateStatus(repoId, 'ready');
+
+      const manifest = await manifestService.generateManifest(repoId, rootPath, 'graph-build');
+      res.json({ nodesCreated, edgesCreated, filesScanned: sourceFiles.length, manifest });
     } catch (err) {
       handleError(res, err);
     }
@@ -218,4 +330,75 @@ export function createApiRoutes(deps: ServerDependencies): Router {
   });
 
   return router;
+}
+
+function parseSymbolsFromContent(content: string, language: string): GraphNode['symbols'] {
+  const symbols: GraphNode['symbols'] = [];
+  if (!['typescript', 'javascript'].includes(language)) return symbols;
+
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const exported = line.includes('export ');
+
+    const fnMatch = line.match(/(?:export\s+)?(?:async\s+)?function\s+(\w+)/);
+    if (fnMatch) {
+      symbols.push({ name: fnMatch[1], kind: 'function', range: { startLine: i, endLine: i }, exported });
+      continue;
+    }
+
+    const classMatch = line.match(/(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/);
+    if (classMatch) {
+      symbols.push({ name: classMatch[1], kind: 'class', range: { startLine: i, endLine: i }, exported });
+      continue;
+    }
+
+    const ifaceMatch = line.match(/(?:export\s+)?(?:interface|type)\s+(\w+)/);
+    if (ifaceMatch) {
+      symbols.push({ name: ifaceMatch[1], kind: 'interface', range: { startLine: i, endLine: i }, exported });
+      continue;
+    }
+
+    const constMatch = line.match(/(?:export\s+)?const\s+(\w+)/);
+    if (constMatch && !line.includes('require(')) {
+      symbols.push({ name: constMatch[1], kind: 'variable', range: { startLine: i, endLine: i }, exported });
+    }
+  }
+  return symbols;
+}
+
+function parseImports(content: string): string[] {
+  const imports: string[] = [];
+  const esImportRegex = /from\s+['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = esImportRegex.exec(content)) !== null) {
+    const specifier = match[1];
+    if (specifier.startsWith('.')) imports.push(specifier);
+  }
+  return imports;
+}
+
+function resolveImportPath(sourceFile: string, importSpecifier: string, allFiles: string[]): string | null {
+  const sourceDir = path.dirname(sourceFile);
+  const resolved = path.normalize(path.join(sourceDir, importSpecifier));
+
+  const candidates = [
+    resolved,
+    resolved + '.ts',
+    resolved + '.tsx',
+    resolved + '.js',
+    resolved + '.jsx',
+    path.join(resolved, 'index.ts'),
+    path.join(resolved, 'index.js'),
+  ];
+
+  for (const candidate of candidates) {
+    if (allFiles.includes(candidate)) return candidate;
+  }
+
+  const withoutExt = resolved.replace(/\.js$/, '');
+  const tsCandidate = withoutExt + '.ts';
+  if (allFiles.includes(tsCandidate)) return tsCandidate;
+
+  return null;
 }
