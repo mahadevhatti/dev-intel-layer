@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import * as d3 from 'd3';
+import { useQuery } from '@tanstack/react-query';
 import { useGraph } from '../hooks/useGraph';
 import { buildSimulation, getLanguageColor, type SimNode, type SimLink } from '../lib/graph-layout';
-import type { GraphNode, GraphEdge } from '../lib/api-client';
-import { GitGraph, ZoomIn, ZoomOut, Maximize2, Filter, Search, X } from 'lucide-react';
+import { fetchGraphMetrics, type GraphNode, type GraphEdge, type FileMetrics } from '../lib/api-client';
+import { GitGraph, ZoomIn, ZoomOut, Maximize2, Filter, Search, X, Flame } from 'lucide-react';
+import { HotspotList, buildHotspotRows } from './HotspotList';
 
 const DIRECTORY_COLORS = [
   '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -128,6 +130,30 @@ function NodeDetail({
   );
 }
 
+function HeatmapLegend({ maxCommits }: { maxCommits: number }) {
+  const stops = [0, 0.25, 0.5, 0.75, 1];
+  return (
+    <div className="absolute bottom-4 left-4 z-10 card py-2 px-3 text-[11px] max-w-xs">
+      <div className="text-zinc-500 font-medium mb-2">Churn (90d commits)</div>
+      <div className="flex h-3 w-full rounded overflow-hidden border border-zinc-700">
+        {stops.map((t, i) => (
+          <div
+            key={i}
+            className="flex-1"
+            style={{
+              background: d3.interpolateRgb('#2563eb', '#dc2626')(t),
+            }}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between mt-1 text-zinc-600">
+        <span>Cold (0)</span>
+        <span>Hot ({maxCommits})</span>
+      </div>
+    </div>
+  );
+}
+
 function Legend({
   languages,
   colorMode,
@@ -179,7 +205,29 @@ export function GraphViewer() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [colorMode, setColorMode] = useState<'language' | 'directory'>('language');
+  const [heatmapOn, setHeatmapOn] = useState(false);
   const dirMapRef = useRef(new Map<string, number>());
+
+  const metricsQuery = useQuery({
+    queryKey: ['graph-metrics', repoId],
+    queryFn: () => fetchGraphMetrics(repoId!),
+    enabled: !!repoId && heatmapOn,
+  });
+
+  const metricByPath = useMemo(() => {
+    const list = metricsQuery.data ?? [];
+    return new Map<string, FileMetrics>(list.map((m) => [m.filePath, m]));
+  }, [metricsQuery.data]);
+
+  const maxCommits90 = useMemo(() => {
+    const list = metricsQuery.data ?? [];
+    return Math.max(1, ...list.map((m) => m.commits90d));
+  }, [metricsQuery.data]);
+
+  const hotspotRows = useMemo(() => {
+    if (!data || !repoId || !heatmapOn || !metricsQuery.data?.length) return [];
+    return buildHotspotRows(data.nodes, data.edges, metricsQuery.data, repoId);
+  }, [data, repoId, heatmapOn, metricsQuery.data]);
 
   const searchResults = useMemo(() => {
     if (!data || !searchQuery.trim()) return [];
@@ -269,10 +317,22 @@ export function GraphViewer() {
     zoomRef.current = zoom;
     svg.call(zoom);
 
-    const colorFn = (d: SimNode) =>
-      colorMode === 'language'
+    const heatScale = d3
+      .scaleLinear<string>()
+      .domain([0, maxCommits90])
+      .range(['#1d4ed8', '#dc2626'])
+      .clamp(true);
+
+    const colorFn = (d: SimNode) => {
+      if (heatmapOn) {
+        const m = metricByPath.get(d.filePath);
+        const v = m?.commits90d ?? 0;
+        return heatScale(v);
+      }
+      return colorMode === 'language'
         ? getLanguageColor(d.language)
         : getDirectoryColor(d.filePath, dirMapRef.current);
+    };
 
     const link = g
       .append('g')
@@ -367,7 +427,7 @@ export function GraphViewer() {
     });
 
     return () => simulation.stop();
-  }, [filteredData, colorMode]);
+  }, [filteredData, colorMode, heatmapOn, metricByPath, maxCommits90]);
 
   useEffect(() => {
     const cleanup = renderGraph();
@@ -434,10 +494,25 @@ export function GraphViewer() {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => setHeatmapOn((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+              heatmapOn
+                ? 'border-amber-500/50 bg-amber-500/10 text-amber-200'
+                : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="Color nodes by git churn (last 90d)"
+          >
+            <Flame size={14} />
+            Heatmap
+          </button>
+
           {/* Color mode */}
           <select
-            className="select w-auto text-xs"
+            className="select w-auto text-xs disabled:opacity-40"
             value={colorMode}
+            disabled={heatmapOn}
             onChange={(e) => setColorMode(e.target.value as 'language' | 'directory')}
           >
             <option value="language">Color: Language</option>
@@ -489,7 +564,13 @@ export function GraphViewer() {
       ) : (
         <div ref={containerRef} className="card relative h-[calc(100vh-12rem)] overflow-hidden p-0">
           <svg ref={svgRef} className="h-full w-full" />
-          <Legend languages={languages} colorMode={colorMode} dirMap={dirMapRef.current} />
+          {heatmapOn && metricsQuery.data && <HeatmapLegend maxCommits={maxCommits90} />}
+          {!heatmapOn && <Legend languages={languages} colorMode={colorMode} dirMap={dirMapRef.current} />}
+          {heatmapOn && metricsQuery.isFetching && (
+            <div className="absolute top-3 left-3 z-10 rounded bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-400">
+              Loading metrics…
+            </div>
+          )}
           {selectedNode && (
             <NodeDetail
               node={selectedNode}
@@ -498,6 +579,10 @@ export function GraphViewer() {
             />
           )}
         </div>
+      )}
+
+      {heatmapOn && data && data.nodes.length > 0 && (
+        <HotspotList rows={hotspotRows} />
       )}
     </div>
   );

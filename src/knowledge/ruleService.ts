@@ -54,7 +54,10 @@ export class RuleService {
       active: true,
     };
 
-    return this.storage.createRule(rule);
+    const created = this.storage.createRule(rule);
+    const changedBy = created.source === 'manual' ? 'manual' : 'rest';
+    this.storage.insertRuleVersion(created.id, created.version, created.content, created.scope, created.tags, changedBy);
+    return created;
   }
 
   getRule(id: string): KnowledgeRule {
@@ -75,6 +78,7 @@ export class RuleService {
     });
 
     if (!updated) throw new RuleNotFoundError(input.id);
+    this.storage.insertRuleVersion(updated.id, updated.version, updated.content, updated.scope, updated.tags, 'rest');
     return updated;
   }
 

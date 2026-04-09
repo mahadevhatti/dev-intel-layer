@@ -96,6 +96,12 @@ export interface KnowledgeRule {
   createdAt: string;
   updatedAt: string;
   active: boolean;
+  provenance?: {
+    sessionId?: string;
+    triggeredByFile?: string;
+    triggeredByDiff?: string;
+    createdVia: 'mcp' | 'rest' | 'manual';
+  };
 }
 
 export const fetchRules = (repoId: string) =>
@@ -166,3 +172,201 @@ export interface GraphBuildResult {
 
 export const buildRepoGraph = (repoId: string) =>
   request<GraphBuildResult>(`/repos/${repoId}/graph/build`, { method: 'POST', body: JSON.stringify({}) });
+
+// ─── Logs ────────────────────────────────────────────────────────────
+
+export type LogSource = 'mcp' | 'rest' | 'hook' | 'internal';
+export type LogStatus = 'success' | 'error';
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  source: LogSource;
+  action: string;
+  repoId: string | null;
+  sessionId: string | null;
+  durationMs: number;
+  request: Record<string, unknown>;
+  response: Record<string, unknown>;
+  status: LogStatus;
+  errorMessage: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface LogFilters {
+  source?: string;
+  action?: string;
+  repoId?: string;
+  status?: string;
+  search?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LogStats {
+  totalEntries: number;
+  errorCount: number;
+  errorRate: number;
+  avgDurationMs: number;
+  topTools: { action: string; count: number }[];
+  topRepos: { repoId: string; count: number }[];
+  callsBySource: Record<string, number>;
+}
+
+export const fetchLogs = (filters: LogFilters) => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined) params.set(k, String(v));
+  }
+  const q = params.toString();
+  return request<{ entries: ActivityLogEntry[]; total: number }>(q ? `/logs?${q}` : '/logs');
+};
+
+export const fetchLogStats = () => request<LogStats>('/logs/stats');
+
+// ─── Documents ──────────────────────────────────────────────────────
+
+export type DocType = 'cursor-rule' | 'agent-guide' | 'contributing' | 'readme' | 'architecture' | 'adr' | 'changelog' | 'docs' | 'other';
+
+export interface RepoDocument {
+  id: string;
+  repoId: string;
+  filePath: string;
+  docType: DocType;
+  title: string;
+  contentHash: string;
+  sizeBytes: number;
+  lastScannedAt: string;
+  lastModifiedAt: string;
+}
+
+export const fetchDocs = (repoId: string, docType?: string) =>
+  request<{ docs: RepoDocument[] }>(`/repos/${repoId}/docs${docType ? `?type=${docType}` : ''}`).then(r => r.docs);
+
+export const fetchDocContent = (repoId: string, docId: string) =>
+  request<{ content: string }>(`/repos/${repoId}/docs/${docId}/content`).then(r => r.content);
+
+export const fetchDocReferences = (repoId: string, docId: string) =>
+  request<{ references: string[] }>(`/repos/${repoId}/docs/${docId}/references`).then(r => r.references);
+
+export const scanDocs = (repoId: string) =>
+  request<{ added: number; updated: number; removed: number }>(`/repos/${repoId}/docs/scan`, { method: 'POST', body: JSON.stringify({}) });
+
+// ─── Sessions ───────────────────────────────────────────────────────
+
+export interface SessionSummary {
+  sessionId: string;
+  firstSeen: string;
+  lastSeen: string;
+  toolCount: number;
+  repos: string[];
+  hasErrors: boolean;
+}
+
+export interface SessionDelta {
+  rulesAdded: number;
+  rulesUpdated: number;
+  nodesUpdated: number;
+  writeActions: string[];
+}
+
+export const fetchSessions = () =>
+  request<{ sessions: SessionSummary[] }>('/sessions').then(r => r.sessions);
+
+export const fetchSession = (sessionId: string) =>
+  request<{ entries: ActivityLogEntry[] }>(`/sessions/${sessionId}`).then(r => r.entries);
+
+export const fetchSessionDelta = (sessionId: string) =>
+  request<SessionDelta>(`/sessions/${sessionId}/delta`);
+
+// ─── Search ─────────────────────────────────────────────────────────
+
+export interface SearchResults {
+  rules: KnowledgeRule[];
+  nodes: GraphNode[];
+  docs: RepoDocument[];
+}
+
+export const searchAll = (query: string, limit = 20) =>
+  request<SearchResults>(`/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+
+// ─── Health ─────────────────────────────────────────────────────────
+
+export interface HealthBreakdown {
+  factor: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface RepoHealthScore {
+  score: number;
+  breakdown: HealthBreakdown[];
+  suggestions: string[];
+}
+
+export const fetchRepoHealth = (repoId: string) =>
+  request<RepoHealthScore>(`/repos/${repoId}/health`);
+
+// ─── Analytics ──────────────────────────────────────────────────────
+
+export interface AnalyticsData {
+  aggregate: {
+    totalNodes: number;
+    totalEdges: number;
+    totalRules: number;
+    totalRepos: number;
+    totalActivity: number;
+  };
+  repoSummaries: { repoId: string; name: string; healthScore: number; activityCount: number }[];
+  activityTrend: { hour: string; count: number }[];
+}
+
+export const fetchAnalytics = () => request<AnalyticsData>('/analytics');
+
+// ─── Webhooks ───────────────────────────────────────────────────────
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: string[];
+  repoId: string | null;
+  secret: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export const fetchWebhooks = () =>
+  request<{ webhooks: Webhook[] }>('/webhooks').then(r => r.webhooks);
+
+export const createWebhook = (data: { url: string; events: string[]; repoId?: string; secret?: string }) =>
+  request<{ webhook: Webhook }>('/webhooks', { method: 'POST', body: JSON.stringify(data) }).then(r => r.webhook);
+
+export const deleteWebhook = async (id: string): Promise<void> => {
+  const res = await fetch(`${BASE}/webhooks/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((body as { message?: string }).message || `Request failed: ${res.status}`);
+  }
+};
+
+export const toggleWebhook = (id: string, active: boolean) =>
+  request<{ webhook: Webhook }>(`/webhooks/${id}`, { method: 'PUT', body: JSON.stringify({ active }) }).then(r => r.webhook);
+
+// ─── Graph Metrics ──────────────────────────────────────────────────
+
+export interface FileMetrics {
+  filePath: string;
+  commits30d: number;
+  commits90d: number;
+  lastModified: string;
+  authorCount: number;
+}
+
+export const fetchGraphMetrics = (repoId: string) =>
+  request<{ metrics: FileMetrics[] }>(`/repos/${repoId}/graph/metrics`).then(r => r.metrics);

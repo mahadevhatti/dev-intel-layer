@@ -16,6 +16,12 @@ export interface KnowledgeRule {
   createdAt: string;
   updatedAt: string;
   active: boolean;
+  provenance?: {
+    sessionId?: string;
+    triggeredByFile?: string;
+    triggeredByDiff?: string;
+    createdVia: 'mcp' | 'rest' | 'manual';
+  };
 }
 
 // ─── Repo Types ─────────────────────────────────────────────────────
@@ -248,4 +254,20 @@ export interface InitKBOutput {
   nodesCreated: number;
   edgesCreated: number;
   manifest: KBManifest;
+}
+
+// ─── Document Types ─────────────────────────────────────────────────
+
+export type DocType = 'cursor-rule' | 'agent-guide' | 'contributing' | 'readme' | 'architecture' | 'adr' | 'changelog' | 'docs' | 'other';
+
+export interface RepoDocument {
+  id: string;
+  repoId: string;
+  filePath: string;
+  docType: DocType;
+  title: string;
+  contentHash: string;
+  sizeBytes: number;
+  lastScannedAt: string;
+  lastModifiedAt: string;
 }

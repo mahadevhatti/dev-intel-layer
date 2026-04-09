@@ -7,19 +7,25 @@ import {
   Search,
   GitBranch,
   AlertTriangle,
-  Server,
   Wifi,
   WifiOff,
   Loader2,
+  ScrollText,
+  Activity,
+  Workflow,
+  Settings,
 } from 'lucide-react';
 import { RepoSelector } from './RepoSelector';
 import { useQuery } from '@tanstack/react-query';
 import { fetchHealth } from '../lib/api-client';
 import { useRepos } from '../hooks/useRepos';
-import { Component, type ReactNode } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
+import { SearchOverlay } from './SearchOverlay';
 
 const repoNavItems = [
   { to: 'graph', label: 'Dependency Graph', icon: GitGraph },
+  { to: 'health', label: 'Health', icon: Activity },
+  { to: 'docs', label: 'Documents', icon: FileCheck },
   { to: 'rules', label: 'Rules', icon: BookOpen },
   { to: 'manifest', label: 'Manifest', icon: FileCheck },
   { to: 'context', label: 'Context Inspector', icon: Search },
@@ -29,11 +35,16 @@ const repoNavItems = [
 
 const pageTitles: Record<string, string> = {
   graph: 'Dependency Graph',
+  health: 'Health',
+  docs: 'Documents',
   rules: 'Rules',
   manifest: 'Manifest',
   context: 'Context Inspector',
   branches: 'Branches',
   conflicts: 'Conflicts',
+  logs: 'Activity Logs',
+  sessions: 'Sessions',
+  webhooks: 'Webhooks',
 };
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -98,12 +109,41 @@ function Breadcrumbs() {
   const location = useLocation();
   const { data: repos } = useRepos();
 
-  const repo = repos?.find((r) => r.id === repoId);
   const pathSegments = location.pathname.split('/').filter(Boolean);
   const currentPage = pathSegments[pathSegments.length - 1];
-  const pageTitle = pageTitles[currentPage];
+  let pageTitle = pageTitles[currentPage];
+  if (pathSegments[0] === 'sessions' && pathSegments.length > 1) {
+    pageTitle = 'Session detail';
+  }
 
-  if (!repoId) return null;
+  if (!repoId) {
+    const globalTitle =
+      pathSegments[0] === 'sessions'
+        ? pathSegments.length > 1
+          ? 'Session detail'
+          : pageTitles.sessions
+        : pathSegments[0] === 'logs'
+          ? pageTitles.logs
+          : pathSegments[0] === 'settings' && pathSegments[1] === 'webhooks'
+            ? pageTitles.webhooks
+            : pageTitle;
+    if (!globalTitle && pathSegments.length === 0) return null;
+    return (
+      <div className="mb-4 flex items-center gap-1.5 text-xs text-zinc-500">
+        <NavLink to="/" className="hover:text-zinc-300 transition-colors">
+          Dashboard
+        </NavLink>
+        {globalTitle && (
+          <>
+            <span className="text-zinc-700">/</span>
+            <span className="text-zinc-400">{globalTitle}</span>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  const repo = repos?.find((r) => r.id === repoId);
 
   return (
     <div className="mb-4 flex items-center gap-1.5 text-xs text-zinc-500">
@@ -122,6 +162,18 @@ function Breadcrumbs() {
 
 export function Layout() {
   const { repoId } = useParams();
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -159,6 +211,62 @@ export function Layout() {
             <LayoutDashboard size={16} />
             Dashboard
           </NavLink>
+
+          <NavLink
+            to="/logs"
+            className={({ isActive }) =>
+              `mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                isActive
+                  ? 'bg-indigo-600/10 text-indigo-400'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+              }`
+            }
+          >
+            <ScrollText size={16} />
+            Activity Logs
+          </NavLink>
+
+          <NavLink
+            to="/sessions"
+            className={({ isActive }) =>
+              `mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                isActive
+                  ? 'bg-indigo-600/10 text-indigo-400'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+              }`
+            }
+          >
+            <Workflow size={16} />
+            Sessions
+          </NavLink>
+
+          <NavLink
+            to="/settings/webhooks"
+            className={({ isActive }) =>
+              `mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                isActive
+                  ? 'bg-indigo-600/10 text-indigo-400'
+                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+              }`
+            }
+          >
+            <Settings size={16} />
+            Settings
+          </NavLink>
+
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="mt-2 flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-800/30 px-3 py-2 text-left text-[11px] text-zinc-500 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50 hover:text-zinc-300"
+          >
+            <span className="flex items-center gap-2">
+              <Search size={14} />
+              Search
+            </span>
+            <kbd className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+              ⌘K
+            </kbd>
+          </button>
 
           {repoId && (
             <div className="mt-4">
@@ -198,6 +306,8 @@ export function Layout() {
           <Outlet />
         </ErrorBoundary>
       </main>
+
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

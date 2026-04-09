@@ -1,8 +1,42 @@
 import type { SyncKBOutput, GraphNode, KBManifest } from '../core/types.js';
 import type { StorageService } from '../core/storage.js';
+import { simpleGit } from 'simple-git';
 import { GitService } from '../git/gitService.js';
 import { GraphQuery } from '../graph/graphQuery.js';
 import { parseDiffStat } from '../git/diffParser.js';
+
+export type RecentFileHistoryEntry = {
+  commits: { hash: string; message: string; date: string }[];
+  daysSinceModified: number;
+};
+
+export async function getRecentFileHistory(
+  repoPath: string,
+  filePaths: string[],
+  commitCount = 5,
+): Promise<Map<string, RecentFileHistoryEntry>> {
+  const git = simpleGit(repoPath);
+  const result = new Map<string, RecentFileHistoryEntry>();
+
+  for (const filePath of filePaths.slice(0, 50)) {
+    try {
+      const log = await git.log({ file: filePath, maxCount: commitCount });
+      const commits = log.all.map((entry) => ({
+        hash: entry.hash.slice(0, 8),
+        message: entry.message,
+        date: entry.date,
+      }));
+      const daysSinceModified = log.latest
+        ? Math.floor((Date.now() - new Date(log.latest.date).getTime()) / (1000 * 60 * 60 * 24))
+        : -1;
+      result.set(filePath, { commits, daysSinceModified });
+    } catch {
+      result.set(filePath, { commits: [], daysSinceModified: -1 });
+    }
+  }
+
+  return result;
+}
 
 export class SyncCollector {
   private graphQuery: GraphQuery;

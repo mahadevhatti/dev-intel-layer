@@ -7,7 +7,11 @@ import { RuleService } from '../../knowledge/ruleService.js';
 import { ManifestService } from '../../manifest/manifestService.js';
 import { SyncService } from '../../sync/syncService.js';
 import { GraphQuery } from '../../graph/graphQuery.js';
+import { DocService } from '../../docs/docService.js';
 import { createHttpServer, startServer } from '../../server/httpServer.js';
+import { ActivityLog } from '../../server/activityLog.js';
+import { HealthComputer } from '../../knowledge/healthScore.js';
+import { WebhookService } from '../../server/webhookService.js';
 
 export function serveCommand(): Command {
   return new Command('serve')
@@ -30,6 +34,10 @@ export function serveCommand(): Command {
       const manifestService = new ManifestService(storage);
       const syncService = new SyncService(storage);
       const graphQuery = new GraphQuery(storage);
+      const docService = new DocService(storage);
+      const activityLog = new ActivityLog();
+      const healthComputer = new HealthComputer(storage);
+      const webhookService = new WebhookService(storage);
 
       const app = createHttpServer({
         storage,
@@ -39,6 +47,10 @@ export function serveCommand(): Command {
         manifestService,
         syncService,
         graphQuery,
+        activityLog,
+        docService,
+        healthComputer,
+        webhookService,
       });
 
       const server = await startServer(app, port, config.server.host);

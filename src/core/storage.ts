@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import type {
   RepoInfo,
@@ -12,6 +13,8 @@ import type {
   KBManifest,
   BranchSnapshot,
   SymbolInfo,
+  RepoDocument,
+  DocType,
 } from './types.js';
 import { StorageError } from './errors.js';
 
@@ -94,6 +97,45 @@ CREATE TABLE IF NOT EXISTS branch_snapshots (
   snapshot_data TEXT NOT NULL,
   created_at    TEXT NOT NULL,
   UNIQUE(repo_id, branch_name)
+);
+
+CREATE TABLE IF NOT EXISTS repo_documents (
+  id               TEXT PRIMARY KEY,
+  repo_id          TEXT NOT NULL REFERENCES repos(id),
+  file_path        TEXT NOT NULL,
+  doc_type         TEXT NOT NULL,
+  title            TEXT NOT NULL,
+  content_hash     TEXT NOT NULL,
+  size_bytes       INTEGER NOT NULL DEFAULT 0,
+  last_scanned_at  TEXT NOT NULL,
+  last_modified_at TEXT NOT NULL,
+  UNIQUE(repo_id, file_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_docs_repo ON repo_documents(repo_id);
+CREATE INDEX IF NOT EXISTS idx_docs_type ON repo_documents(doc_type);
+
+CREATE TABLE IF NOT EXISTS rule_versions (
+  id         TEXT PRIMARY KEY,
+  rule_id    TEXT NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+  version    INTEGER NOT NULL,
+  content    TEXT NOT NULL,
+  scope      TEXT NOT NULL,
+  tags       TEXT DEFAULT '[]',
+  changed_at TEXT NOT NULL,
+  changed_by TEXT DEFAULT 'unknown'
+);
+
+CREATE INDEX IF NOT EXISTS idx_rule_versions_rule ON rule_versions(rule_id);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id         TEXT PRIMARY KEY,
+  url        TEXT NOT NULL,
+  events     TEXT NOT NULL DEFAULT '[]',
+  repo_id    TEXT REFERENCES repos(id),
+  secret     TEXT,
+  active     INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
 );
 `;
 
@@ -182,6 +224,8 @@ export class StorageService {
       this.db.prepare('DELETE FROM graph_edges WHERE repo_id = ?').run(id);
       this.db.prepare('DELETE FROM graph_nodes WHERE repo_id = ?').run(id);
       this.db.prepare('DELETE FROM rules WHERE repo_id = ?').run(id);
+      this.db.prepare('DELETE FROM repo_documents WHERE repo_id = ?').run(id);
+      this.db.prepare('DELETE FROM webhooks WHERE repo_id = ?').run(id);
       this.db.prepare('DELETE FROM repos WHERE id = ?').run(id);
     });
     transaction();
@@ -508,6 +552,72 @@ export class StorageService {
       .run(repoId, branchName);
   }
 
+  // ─── Document Operations ──────────────────────────────────────────
+
+  upsertDocument(doc: RepoDocument): RepoDocument {
+    const stmt = this.db.prepare(`
+      INSERT INTO repo_documents (id, repo_id, file_path, doc_type, title, content_hash, size_bytes, last_scanned_at, last_modified_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(repo_id, file_path) DO UPDATE SET
+        doc_type = excluded.doc_type,
+        title = excluded.title,
+        content_hash = excluded.content_hash,
+        size_bytes = excluded.size_bytes,
+        last_scanned_at = excluded.last_scanned_at,
+        last_modified_at = excluded.last_modified_at
+    `);
+    stmt.run(doc.id, doc.repoId, doc.filePath, doc.docType, doc.title, doc.contentHash, doc.sizeBytes, doc.lastScannedAt, doc.lastModifiedAt);
+    return doc;
+  }
+
+  getDocument(id: string): RepoDocument | null {
+    const row = this.db.prepare('SELECT * FROM repo_documents WHERE id = ?').get(id) as RepoDocumentRow | undefined;
+    return row ? mapRepoDocumentRow(row) : null;
+  }
+
+  listDocuments(repoId: string, docType?: string): RepoDocument[] {
+    if (docType) {
+      const rows = this.db.prepare('SELECT * FROM repo_documents WHERE repo_id = ? AND doc_type = ? ORDER BY file_path').all(repoId, docType) as RepoDocumentRow[];
+      return rows.map(mapRepoDocumentRow);
+    }
+    const rows = this.db.prepare('SELECT * FROM repo_documents WHERE repo_id = ? ORDER BY doc_type, file_path').all(repoId) as RepoDocumentRow[];
+    return rows.map(mapRepoDocumentRow);
+  }
+
+  deleteDocumentsForRepo(repoId: string): void {
+    this.db.prepare('DELETE FROM repo_documents WHERE repo_id = ?').run(repoId);
+  }
+
+  deleteDocument(id: string): void {
+    this.db.prepare('DELETE FROM repo_documents WHERE id = ?').run(id);
+  }
+
+  deleteDocumentsByPaths(repoId: string, filePaths: string[]): void {
+    if (filePaths.length === 0) return;
+    const placeholders = filePaths.map(() => '?').join(',');
+    this.db.prepare(`DELETE FROM repo_documents WHERE repo_id = ? AND file_path IN (${placeholders})`).run(repoId, ...filePaths);
+  }
+
+  // ─── Webhook Operations ───────────────────────────────────────────
+
+  createWebhook(webhook: { id: string; url: string; events: string[]; repoId: string | null; secret: string | null; active: boolean; createdAt: string }): void {
+    this.db.prepare('INSERT INTO webhooks (id, url, events, repo_id, secret, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(webhook.id, webhook.url, JSON.stringify(webhook.events), webhook.repoId, webhook.secret, webhook.active ? 1 : 0, webhook.createdAt);
+  }
+
+  listWebhooks(): Array<{ id: string; url: string; events: string[]; repoId: string | null; secret: string | null; active: boolean; createdAt: string }> {
+    const rows = this.db.prepare('SELECT * FROM webhooks ORDER BY created_at DESC').all() as any[];
+    return rows.map(r => ({ id: r.id, url: r.url, events: JSON.parse(r.events), repoId: r.repo_id, secret: r.secret, active: r.active === 1, createdAt: r.created_at }));
+  }
+
+  deleteWebhook(id: string): void {
+    this.db.prepare('DELETE FROM webhooks WHERE id = ?').run(id);
+  }
+
+  updateWebhookActive(id: string, active: boolean): void {
+    this.db.prepare('UPDATE webhooks SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+  }
+
   // ─── Utility ───────────────────────────────────────────────────────
 
   getRepoStats(repoId: string): {
@@ -520,6 +630,35 @@ export class StorageService {
       edgeCount: this.getGraphEdgeCount(repoId),
       ruleCount: this.getActiveRuleCount(repoId),
     };
+  }
+
+  insertRuleVersion(ruleId: string, version: number, content: string, scope: string, tags: string[], changedBy: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO rule_versions (id, rule_id, version, content, scope, tags, changed_at, changed_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(randomUUID(), ruleId, version, content, scope, JSON.stringify(tags), new Date().toISOString(), changedBy);
+  }
+
+  getRuleVersions(ruleId: string): Array<{
+    id: string;
+    version: number;
+    content: string;
+    scope: string;
+    tags: string[];
+    changedAt: string;
+    changedBy: string;
+  }> {
+    const rows = this.db.prepare('SELECT * FROM rule_versions WHERE rule_id = ? ORDER BY version DESC').all(ruleId) as RuleVersionRow[];
+    return rows.map((r) => ({
+      id: r.id,
+      version: r.version,
+      content: r.content,
+      scope: r.scope,
+      tags: JSON.parse(r.tags) as string[],
+      changedAt: r.changed_at,
+      changedBy: r.changed_by,
+    }));
   }
 
   transaction<T>(fn: () => T): T {
@@ -595,6 +734,29 @@ interface BranchSnapshotRow {
   created_at: string;
 }
 
+interface RepoDocumentRow {
+  id: string;
+  repo_id: string;
+  file_path: string;
+  doc_type: string;
+  title: string;
+  content_hash: string;
+  size_bytes: number;
+  last_scanned_at: string;
+  last_modified_at: string;
+}
+
+interface RuleVersionRow {
+  id: string;
+  rule_id: string;
+  version: number;
+  content: string;
+  scope: string;
+  tags: string;
+  changed_at: string;
+  changed_by: string;
+}
+
 function mapRepoRow(row: RepoRow): RepoInfo {
   return {
     id: row.id,
@@ -657,5 +819,19 @@ function mapBranchSnapshotRow(row: BranchSnapshotRow): BranchSnapshot {
     baseCommit: row.base_commit,
     snapshotData: row.snapshot_data,
     createdAt: row.created_at,
+  };
+}
+
+function mapRepoDocumentRow(row: RepoDocumentRow): RepoDocument {
+  return {
+    id: row.id,
+    repoId: row.repo_id,
+    filePath: row.file_path,
+    docType: row.doc_type as DocType,
+    title: row.title,
+    contentHash: row.content_hash,
+    sizeBytes: row.size_bytes,
+    lastScannedAt: row.last_scanned_at,
+    lastModifiedAt: row.last_modified_at,
   };
 }

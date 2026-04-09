@@ -11,7 +11,9 @@ import { RuleService } from '../../src/knowledge/ruleService.js';
 import { ManifestService } from '../../src/manifest/manifestService.js';
 import { SyncService } from '../../src/sync/syncService.js';
 import { GraphQuery } from '../../src/graph/graphQuery.js';
+import { DocService } from '../../src/docs/docService.js';
 import { createHttpServer, startServer } from '../../src/server/httpServer.js';
+import { ActivityLog } from '../../src/server/activityLog.js';
 
 let tmpDir: string;
 let dbPath: string;
@@ -39,6 +41,8 @@ beforeAll(async () => {
   const manifestService = new ManifestService(storage);
   const syncService = new SyncService(storage);
   const graphQuery = new GraphQuery(storage);
+  const docService = new DocService(storage);
+  const activityLog = new ActivityLog();
 
   const app = createHttpServer({
     storage,
@@ -48,6 +52,8 @@ beforeAll(async () => {
     manifestService,
     syncService,
     graphQuery,
+    activityLog,
+    docService,
   });
 
   server = await startServer(app, 0, 'localhost');

@@ -6,9 +6,45 @@ import { randomUUID } from 'node:crypto';
 import type { ApplyKBUpdatesInput } from '../core/types.js';
 import type { ServerDependencies } from './httpServer.js';
 
+function truncateForLog(obj: unknown, maxLen = 500): Record<string, unknown> {
+  try {
+    const str = JSON.stringify(obj);
+    if (str.length <= maxLen) return typeof obj === 'object' && obj !== null ? obj as Record<string, unknown> : { value: obj };
+    return { _truncated: true, preview: str.slice(0, maxLen) };
+  } catch {
+    return { _error: 'unserializable' };
+  }
+}
+
 export function createMCPEndpoint(deps: ServerDependencies): Router {
   const router = Router();
-  const { repoManager, repoRouter, ruleService, manifestService, syncService, graphQuery, storage } = deps;
+  const { repoManager, repoRouter, ruleService, manifestService, syncService, graphQuery, storage, activityLog, docService } = deps;
+
+  let currentSessionId: string | null = null;
+
+  function logMCPTool(toolName: string, params: Record<string, unknown>, result: unknown, durationMs: number, error?: string) {
+    let repoId: string | null = null;
+    const resultText = (result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+    if (resultText) {
+      try {
+        const parsed = JSON.parse(resultText);
+        repoId = parsed?.repo?.id ?? parsed?.repoId ?? parsed?.manifest?.repoId ?? null;
+      } catch { /* not JSON */ }
+    }
+
+    activityLog.log({
+      source: 'mcp',
+      action: toolName,
+      repoId,
+      sessionId: currentSessionId,
+      durationMs,
+      request: truncateForLog(params),
+      response: truncateForLog(result),
+      status: error ? 'error' : 'success',
+      errorMessage: error ?? null,
+      metadata: {},
+    });
+  }
 
   const mcpServer = new McpServer({
     name: 'cortex',
@@ -18,8 +54,16 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
   // ─── MCP Tools ────────────────────────────────────────────────────
 
   mcpServer.tool('list_repos', 'List all registered repositories', {}, async () => {
-    const repos = repoManager.listRepos();
-    return { content: [{ type: 'text', text: JSON.stringify({ repos }, null, 2) }] };
+    const start = Date.now();
+    try {
+      const repos = repoManager.listRepos();
+      const result = { content: [{ type: 'text' as const, text: JSON.stringify({ repos }, null, 2) }] };
+      logMCPTool('list_repos', {}, result, Date.now() - start);
+      return result;
+    } catch (err) {
+      logMCPTool('list_repos', {}, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   });
 
   mcpServer.tool(
@@ -27,15 +71,18 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
     'Get detailed status of a specific repository',
     { repoPath: z.string().describe('Absolute path to the repository') },
     async ({ repoPath }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const manifest = manifestService.getManifest(ctx.repo.id);
-      const stats = storage.getRepoStats(ctx.repo.id);
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({ repo: ctx.repo, manifest, stats }, null, 2),
-        }],
-      };
+      const start = Date.now();
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const manifest = manifestService.getManifest(ctx.repo.id);
+        const stats = storage.getRepoStats(ctx.repo.id);
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ repo: ctx.repo, manifest, stats }, null, 2) }] };
+        logMCPTool('get_repo_status', { repoPath }, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('get_repo_status', { repoPath }, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -48,14 +95,18 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       includeFullDiff: z.boolean().optional().describe('Include full diff content'),
     },
     async ({ repoPath, files, includeFullDiff }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const data = await syncService.collectSyncData(
-        ctx.repo.id,
-        ctx.repo.path,
-        files,
-        includeFullDiff,
-      );
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const start = Date.now();
+      const params = { repoPath, files, includeFullDiff };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const data = await syncService.collectSyncData(ctx.repo.id, ctx.repo.path, files, includeFullDiff);
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+        logMCPTool('sync_kb', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('sync_kb', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -83,13 +134,22 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       })).describe('Rule changes to apply'),
     },
     async ({ repoPath, nodeUpdates, ruleChanges }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const result = await syncService.applyUpdates(ctx.repo.id, ctx.repo.path, {
-        repoPath,
-        nodeUpdates,
-        ruleChanges: ruleChanges as ApplyKBUpdatesInput['ruleChanges'],
-      });
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      const start = Date.now();
+      const params = { repoPath, nodeUpdates: nodeUpdates.length, ruleChanges: ruleChanges.length };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const data = await syncService.applyUpdates(ctx.repo.id, ctx.repo.path, {
+          repoPath,
+          nodeUpdates,
+          ruleChanges: ruleChanges as ApplyKBUpdatesInput['ruleChanges'],
+        });
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+        logMCPTool('apply_kb_updates', { ...params, nodeUpdates, ruleChanges }, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('apply_kb_updates', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -100,31 +160,49 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       repoPath: z.string().describe('Absolute path to the repository'),
       files: z.array(z.string()).optional().describe('Files to get context for'),
       depth: z.number().optional().describe('Graph traversal depth'),
+      includeRecentChanges: z.boolean().optional().describe('Include recent git history per file'),
     },
-    async ({ repoPath, files, depth }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const result: { nodes: unknown[]; edges: unknown[]; rules: unknown[]; relatedFiles: string[] } = {
-        nodes: [],
-        edges: [],
-        rules: ruleService.getRulesForContext(ctx.repo.id),
-        relatedFiles: [],
-      };
+    async ({ repoPath, files, depth, includeRecentChanges }) => {
+      const start = Date.now();
+      const params = { repoPath, files, depth, includeRecentChanges };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const result: { nodes: unknown[]; edges: unknown[]; rules: unknown[]; relatedFiles: string[] } = {
+          nodes: [],
+          edges: [],
+          rules: ruleService.getRulesForContext(ctx.repo.id),
+          relatedFiles: [],
+        };
 
-      if (files && files.length > 0) {
-        for (const file of files) {
-          const subgraph = graphQuery.getSubgraph(ctx.repo.id, file, depth ?? 2);
-          result.nodes.push(...subgraph.nodes);
-          result.edges.push(...subgraph.edges);
-          result.relatedFiles.push(
-            ...subgraph.nodes.map((n) => n.filePath).filter((f) => !files.includes(f)),
-          );
+        if (files && files.length > 0) {
+          for (const file of files) {
+            const subgraph = graphQuery.getSubgraph(ctx.repo.id, file, depth ?? 2);
+            result.nodes.push(...subgraph.nodes);
+            result.edges.push(...subgraph.edges);
+            result.relatedFiles.push(
+              ...subgraph.nodes.map((n) => n.filePath).filter((f) => !files.includes(f)),
+            );
+          }
+        } else {
+          result.nodes = graphQuery.listNodes(ctx.repo.id);
+          result.edges = graphQuery.listEdges(ctx.repo.id);
         }
-      } else {
-        result.nodes = graphQuery.listNodes(ctx.repo.id);
-        result.edges = graphQuery.listEdges(ctx.repo.id);
-      }
 
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        // Smart context: include recent changes if requested
+        if (includeRecentChanges && files && files.length > 0) {
+          const { getRecentFileHistory } = await import('../sync/syncCollector.js');
+          const allFilePaths = result.nodes.map((n: any) => n.filePath);
+          const history = await getRecentFileHistory(ctx.repo.path, allFilePaths);
+          (result as { recentChanges?: Record<string, unknown> }).recentChanges = Object.fromEntries(history);
+        }
+
+        const mcpResult = { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        logMCPTool('get_context', params, mcpResult, Date.now() - start);
+        return mcpResult;
+      } catch (err) {
+        logMCPTool('get_context', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -139,15 +217,18 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       includeCrossRepo: z.boolean().optional(),
     },
     async ({ repoPath, scope, type, active, includeCrossRepo }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const rules = ruleService.listRules({
-        repoId: ctx.repo.id,
-        scope,
-        type,
-        active,
-        includeCrossRepo,
-      });
-      return { content: [{ type: 'text', text: JSON.stringify({ rules }, null, 2) }] };
+      const start = Date.now();
+      const params = { repoPath, scope, type, active, includeCrossRepo };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const rules = ruleService.listRules({ repoId: ctx.repo.id, scope, type, active, includeCrossRepo });
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ rules }, null, 2) }] };
+        logMCPTool('get_rules', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('get_rules', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -162,13 +243,22 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       tags: z.array(z.string()).optional(),
     },
     async ({ repoPath, type, content, scope, tags }) => {
-      let repoId: string | null = null;
-      if (repoPath) {
-        const ctx = await repoRouter.resolve(repoPath);
-        repoId = ctx.repo.id;
+      const start = Date.now();
+      const params = { repoPath, type, content, scope, tags };
+      try {
+        let repoId: string | null = null;
+        if (repoPath) {
+          const ctx = await repoRouter.resolve(repoPath);
+          repoId = ctx.repo.id;
+        }
+        const rule = ruleService.addRule({ repoId, type, content, scope: scope as 'cross-repo' | 'global' | undefined, tags });
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ rule }, null, 2) }] };
+        logMCPTool('add_rule', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('add_rule', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
       }
-      const rule = ruleService.addRule({ repoId, type, content, scope: scope as 'cross-repo' | 'global' | undefined, tags });
-      return { content: [{ type: 'text', text: JSON.stringify({ rule }, null, 2) }] };
     },
   );
 
@@ -183,8 +273,17 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       active: z.boolean().optional(),
     },
     async ({ id, content, scope, tags, active }) => {
-      const rule = ruleService.updateRule({ id, content, scope: scope as 'cross-repo' | 'global' | undefined, tags, active });
-      return { content: [{ type: 'text', text: JSON.stringify({ rule }, null, 2) }] };
+      const start = Date.now();
+      const params = { id, content, scope, tags, active };
+      try {
+        const rule = ruleService.updateRule({ id, content, scope: scope as 'cross-repo' | 'global' | undefined, tags, active });
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ rule }, null, 2) }] };
+        logMCPTool('update_rule', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('update_rule', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -198,17 +297,23 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       includeSymbols: z.boolean().optional(),
     },
     async ({ repoPath, file, depth }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      let result;
-      if (file) {
-        result = graphQuery.getSubgraph(ctx.repo.id, file, depth ?? 2);
-      } else {
-        result = {
-          nodes: graphQuery.listNodes(ctx.repo.id),
-          edges: graphQuery.listEdges(ctx.repo.id),
-        };
+      const start = Date.now();
+      const params = { repoPath, file, depth };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        let data;
+        if (file) {
+          data = graphQuery.getSubgraph(ctx.repo.id, file, depth ?? 2);
+        } else {
+          data = { nodes: graphQuery.listNodes(ctx.repo.id), edges: graphQuery.listEdges(ctx.repo.id) };
+        }
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+        logMCPTool('get_graph', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('get_graph', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
       }
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );
 
@@ -217,9 +322,17 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
     'Get current manifest state for a repository',
     { repoPath: z.string().describe('Absolute path to the repository') },
     async ({ repoPath }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      const manifest = manifestService.getManifest(ctx.repo.id);
-      return { content: [{ type: 'text', text: JSON.stringify({ manifest }, null, 2) }] };
+      const start = Date.now();
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        const manifest = manifestService.getManifest(ctx.repo.id);
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ manifest }, null, 2) }] };
+        logMCPTool('get_manifest', { repoPath }, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('get_manifest', { repoPath }, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -231,42 +344,77 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
       mode: z.enum(['current-branch', 'main', 'full', 'empty']).describe('Init mode'),
     },
     async ({ repoPath, mode }) => {
-      const ctx = await repoRouter.resolve(repoPath);
-      repoManager.updateStatus(ctx.repo.id, 'scanning');
+      const start = Date.now();
+      const params = { repoPath, mode };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        repoManager.updateStatus(ctx.repo.id, 'scanning');
 
-      if (mode === 'empty') {
-        storage.deleteGraphNodesForRepo(ctx.repo.id);
+        if (mode === 'empty') {
+          storage.deleteGraphNodesForRepo(ctx.repo.id);
+          repoManager.updateStatus(ctx.repo.id, 'ready');
+          const manifest = await manifestService.generateManifest(ctx.repo.id, ctx.repo.path, 'init');
+          const result = {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ status: 'ready', repoId: ctx.repo.id, filesIndexed: 0, nodesCreated: 0, edgesCreated: 0, manifest }, null, 2),
+            }],
+          };
+          logMCPTool('init_kb', params, result, Date.now() - start);
+          return result;
+        }
+
         repoManager.updateStatus(ctx.repo.id, 'ready');
         const manifest = await manifestService.generateManifest(ctx.repo.id, ctx.repo.path, 'init');
-        return {
+        const result = {
           content: [{
-            type: 'text',
-            text: JSON.stringify({
-              status: 'ready',
-              repoId: ctx.repo.id,
-              filesIndexed: 0,
-              nodesCreated: 0,
-              edgesCreated: 0,
-              manifest,
-            }, null, 2),
+            type: 'text' as const,
+            text: JSON.stringify({ status: 'ready', repoId: ctx.repo.id, mode, manifest }, null, 2),
           }],
         };
+        logMCPTool('init_kb', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('init_kb', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
       }
+    },
+  );
 
-      repoManager.updateStatus(ctx.repo.id, 'ready');
-      const manifest = await manifestService.generateManifest(ctx.repo.id, ctx.repo.path, 'init');
+  mcpServer.tool(
+    'get_docs',
+    'Get documentation files for a repository',
+    {
+      repoPath: z.string().describe('Absolute path to the repository'),
+      docType: z.string().optional().describe('Filter by document type'),
+      filePath: z.string().optional().describe('Find docs relevant to a specific source file'),
+    },
+    async ({ repoPath, docType, filePath }) => {
+      const start = Date.now();
+      const params = { repoPath, docType, filePath };
+      try {
+        const ctx = await repoRouter.resolve(repoPath);
+        if (!docService) throw new Error('DocService not available');
+        let docs = docService.listDocs(ctx.repo.id, docType as any);
 
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({
-            status: 'ready',
-            repoId: ctx.repo.id,
-            mode,
-            manifest,
-          }, null, 2),
-        }],
-      };
+        // If filePath specified, also return content of docs that reference this file
+        const docsWithContent: Array<{ doc: typeof docs[0]; content?: string }> = [];
+        for (const doc of docs) {
+          const refs = docService.getDocReferences(ctx.repo.id, doc.id, ctx.repo.path);
+          const isRelevant = !filePath || refs.includes(filePath) || doc.docType === 'cursor-rule' || doc.docType === 'agent-guide';
+          if (isRelevant) {
+            const content = docService.getDocContent(ctx.repo.id, doc.id, ctx.repo.path);
+            docsWithContent.push({ doc, content: content ?? undefined });
+          }
+        }
+
+        const result = { content: [{ type: 'text' as const, text: JSON.stringify({ docs: docsWithContent }, null, 2) }] };
+        logMCPTool('get_docs', params, result, Date.now() - start);
+        return result;
+      } catch (err) {
+        logMCPTool('get_docs', params, {}, Date.now() - start, err instanceof Error ? err.message : String(err));
+        throw err;
+      }
     },
   );
 
@@ -295,6 +443,7 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
   router.post('/', async (req: Request, res: Response) => {
     try {
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      if (sessionId) currentSessionId = sessionId;
       let transport: StreamableHTTPServerTransport;
 
       if (sessionId && transports.has(sessionId)) {
@@ -303,6 +452,7 @@ export function createMCPEndpoint(deps: ServerDependencies): Router {
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (sid) => {
+            currentSessionId = sid;
             transports.set(sid, transport);
           },
         });

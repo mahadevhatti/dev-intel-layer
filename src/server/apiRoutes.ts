@@ -9,7 +9,7 @@ import { CortexError } from '../core/errors.js';
 
 export function createApiRoutes(deps: ServerDependencies): Router {
   const router = Router();
-  const { storage, repoManager, repoRouter, ruleService, manifestService, graphQuery } = deps;
+  const { storage, repoManager, repoRouter, ruleService, manifestService, graphQuery, docService } = deps;
 
   function handleError(res: Response, err: unknown) {
     if (err instanceof CortexError) {
@@ -115,7 +115,7 @@ export function createApiRoutes(deps: ServerDependencies): Router {
 
   router.post('/repos/:repoId/graph/build', async (req: Request, res: Response) => {
     try {
-      const ctx = repoRouter.resolveById(req.params.repoId);
+      const ctx = repoRouter.resolveById(req.params.repoId as string);
       const repoId = ctx.repo.id;
       const rootPath = ctx.repo.path;
       const ignorePaths = (req.body.ignorePaths as string[]) ?? ['node_modules', '.git', 'dist', 'coverage'];
@@ -324,6 +324,286 @@ export function createApiRoutes(deps: ServerDependencies): Router {
         source,
       });
       res.status(201).json({ rule });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  // ─── Document Endpoints ─────────────────────────────────────────
+
+  router.get('/repos/:repoId/docs', (req, res) => {
+    try {
+      const repoId = req.params.repoId as string;
+      const docType = req.query.type as string | undefined;
+      const docs = docService!.listDocs(repoId, docType as any);
+      res.json({ docs });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/repos/:repoId/docs/:docId', (req, res) => {
+    try {
+      const doc = docService!.getDoc(req.params.docId as string);
+      if (!doc) { res.status(404).json({ error: 'DOC_NOT_FOUND' }); return; }
+      res.json({ doc });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/repos/:repoId/docs/:docId/content', (req, res) => {
+    try {
+      const ctx = repoRouter.resolveById(req.params.repoId as string);
+      const content = docService!.getDocContent(ctx.repo.id, req.params.docId as string, ctx.repo.path);
+      if (content === null) { res.status(404).json({ error: 'DOC_NOT_FOUND' }); return; }
+      res.json({ content });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/repos/:repoId/docs/:docId/references', (req, res) => {
+    try {
+      const ctx = repoRouter.resolveById(req.params.repoId as string);
+      const references = docService!.getDocReferences(ctx.repo.id, req.params.docId as string, ctx.repo.path);
+      res.json({ references });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.post('/repos/:repoId/docs/scan', (req, res) => {
+    try {
+      const ctx = repoRouter.resolveById(req.params.repoId as string);
+      const result = docService!.scanAndSync(ctx.repo.id, ctx.repo.path);
+      res.json(result);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  // ─── Health Score Endpoint ────────────────────────────────────────
+  router.get('/repos/:repoId/health', (req, res) => {
+    try {
+      if (!deps.healthComputer) { res.status(501).json({ error: 'Health scoring not available' }); return; }
+      const result = deps.healthComputer.compute(req.params.repoId as string);
+      res.json(result);
+    } catch (err) { handleError(res, err); }
+  });
+
+  // ─── Search Endpoint ──────────────────────────────────────────────
+  router.get('/search', (req, res) => {
+    try {
+      const q = (req.query.q as string || '').toLowerCase().trim();
+      const limit = parseInt(req.query.limit as string) || 20;
+      if (!q) { res.json({ rules: [], nodes: [], docs: [] }); return; }
+
+      const allRepos = repoManager.listRepos();
+      const matchedRules: any[] = [];
+      const matchedNodes: any[] = [];
+      const matchedDocs: any[] = [];
+
+      for (const repo of allRepos) {
+        // Search rules
+        const rules = storage.listRules({ repoId: repo.id, includeCrossRepo: true });
+        for (const rule of rules) {
+          if (matchedRules.length >= limit) break;
+          if (rule.content.toLowerCase().includes(q) || rule.tags.some(t => t.toLowerCase().includes(q))) {
+            matchedRules.push(rule);
+          }
+        }
+
+        // Search graph nodes
+        const nodes = storage.listGraphNodes(repo.id);
+        for (const node of nodes) {
+          if (matchedNodes.length >= limit) break;
+          if (
+            node.filePath.toLowerCase().includes(q) ||
+            node.summary.toLowerCase().includes(q) ||
+            node.symbols.some(s => s.name.toLowerCase().includes(q))
+          ) {
+            matchedNodes.push(node);
+          }
+        }
+
+        // Search docs
+        if (deps.docService) {
+          const docs = deps.docService.listDocs(repo.id);
+          for (const doc of docs) {
+            if (matchedDocs.length >= limit) break;
+            if (doc.title.toLowerCase().includes(q) || doc.filePath.toLowerCase().includes(q)) {
+              matchedDocs.push(doc);
+            }
+          }
+        }
+      }
+
+      // Also search cross-repo rules
+      const crossRules = storage.listCrossRepoRules();
+      for (const rule of crossRules) {
+        if (matchedRules.length >= limit) break;
+        if (!matchedRules.find(r => r.id === rule.id) && (rule.content.toLowerCase().includes(q) || rule.tags.some(t => t.toLowerCase().includes(q)))) {
+          matchedRules.push(rule);
+        }
+      }
+
+      res.json({
+        rules: matchedRules.slice(0, limit),
+        nodes: matchedNodes.slice(0, limit),
+        docs: matchedDocs.slice(0, limit),
+      });
+    } catch (err) { handleError(res, err); }
+  });
+
+  // ─── Graph Metrics Endpoint ───────────────────────────────────────
+  router.get('/repos/:repoId/graph/metrics', async (req: Request, res: Response) => {
+    try {
+      const ctx = repoRouter.resolveById(req.params.repoId as string);
+      const nodes = graphQuery.listNodes(ctx.repo.id);
+      const filePaths = nodes.map((n) => n.filePath);
+
+      const { FileMetricsCollector } = await import('../git/fileMetrics.js');
+      const collector = new FileMetricsCollector();
+      const metrics = await collector.collectMetrics(ctx.repo.path, filePaths.slice(0, 200));
+      res.json({ metrics });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  // ─── Rule History & Impact ────────────────────────────────────────
+  router.get('/repos/:repoId/rules/:id/history', (req, res) => {
+    try {
+      const versions = storage.getRuleVersions(req.params.id as string);
+      res.json({ versions });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  router.get('/repos/:repoId/rules/:id/impact', (req, res) => {
+    try {
+      const rule = storage.getRule(req.params.id as string);
+      if (!rule) {
+        res.status(404).json({ error: 'RULE_NOT_FOUND' });
+        return;
+      }
+
+      const repoId = req.params.repoId as string;
+      const nodes = storage.listGraphNodes(repoId);
+
+      const impactedNodes = nodes.filter((node) => {
+        if (rule.tags.length > 0) {
+          return rule.tags.some(
+            (tag) =>
+              node.filePath.includes(tag) || node.symbols.some((s) => s.name.toLowerCase().includes(tag.toLowerCase())),
+          );
+        }
+        return true;
+      });
+
+      res.json({
+        impactedCount: impactedNodes.length,
+        impactedFiles: impactedNodes.map((n) => n.filePath).slice(0, 50),
+      });
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
+
+  // ─── Webhook Endpoints ────────────────────────────────────────────
+
+  router.get('/webhooks', (_req, res) => {
+    try {
+      if (!deps.webhookService) { res.json({ webhooks: [] }); return; }
+      res.json({ webhooks: deps.webhookService.list() });
+    } catch (err) { handleError(res, err); }
+  });
+
+  router.post('/webhooks', (req, res) => {
+    try {
+      if (!deps.webhookService) { res.status(501).json({ error: 'Webhooks not available' }); return; }
+      const { url, events, repoId, secret } = req.body;
+      const webhook = deps.webhookService.register(url, events, repoId, secret);
+      res.status(201).json({ webhook });
+    } catch (err) { handleError(res, err); }
+  });
+
+  router.delete('/webhooks/:id', (req, res) => {
+    try {
+      if (!deps.webhookService) { res.status(501).json({ error: 'Webhooks not available' }); return; }
+      deps.webhookService.remove(req.params.id as string);
+      res.status(204).end();
+    } catch (err) { handleError(res, err); }
+  });
+
+  router.put('/webhooks/:id', (req, res) => {
+    try {
+      if (!deps.webhookService) { res.status(501).json({ error: 'Webhooks not available' }); return; }
+      const { active } = req.body;
+      deps.webhookService.toggle(req.params.id as string, active);
+      const webhooks = deps.webhookService.list();
+      const webhook = webhooks.find(w => w.id === req.params.id);
+      res.json({ webhook });
+    } catch (err) { handleError(res, err); }
+  });
+
+  // ─── Analytics Endpoint ───────────────────────────────────────────
+  router.get('/analytics', (_req, res) => {
+    try {
+      const repos = repoManager.listRepos();
+      let totalNodes = 0, totalEdges = 0, totalRules = 0;
+
+      const repoSummaries = repos.map(repo => {
+        const stats = storage.getRepoStats(repo.id);
+        totalNodes += stats.nodeCount;
+        totalEdges += stats.edgeCount;
+        totalRules += stats.ruleCount;
+
+        let healthScore = 0;
+        if (deps.healthComputer) {
+          try { healthScore = deps.healthComputer.compute(repo.id).score; } catch { /* skip */ }
+        }
+
+        // Get activity count from logs
+        const logResult = deps.activityLog.query({ repoId: repo.id, limit: 0 });
+
+        return {
+          repoId: repo.id,
+          name: repo.name,
+          healthScore,
+          activityCount: logResult.total,
+        };
+      });
+
+      // Activity trend: hourly buckets for last 7 days
+      const activityTrend: { hour: string; count: number }[] = [];
+      const now = Date.now();
+      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const allLogs = deps.activityLog.query({ since: sevenDaysAgo, limit: 10000 });
+
+      // Group by hour
+      const hourBuckets = new Map<string, number>();
+      for (const entry of allLogs.entries) {
+        const hourKey = entry.timestamp.slice(0, 13); // "2024-01-15T14"
+        hourBuckets.set(hourKey, (hourBuckets.get(hourKey) ?? 0) + 1);
+      }
+
+      // Fill in empty hours for last 7 days (168 hours)
+      for (let i = 0; i < 168; i++) {
+        const hourDate = new Date(now - (167 - i) * 60 * 60 * 1000);
+        const hourKey = hourDate.toISOString().slice(0, 13);
+        activityTrend.push({ hour: hourKey, count: hourBuckets.get(hourKey) ?? 0 });
+      }
+
+      const totalActivity = deps.activityLog.query({ limit: 0 }).total;
+
+      res.json({
+        aggregate: { totalNodes, totalEdges, totalRules, totalRepos: repos.length, totalActivity },
+        repoSummaries,
+        activityTrend,
+      });
     } catch (err) {
       handleError(res, err);
     }

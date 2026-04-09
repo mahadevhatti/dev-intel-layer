@@ -131,3 +131,18 @@
     color: var(--color-zinc-200);
   }
 }
+
+@keyframes log-row-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility log-row-enter {
+  animation: log-row-slide 0.28s ease-out;
+}
