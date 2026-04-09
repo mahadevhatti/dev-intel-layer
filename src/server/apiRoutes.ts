@@ -153,14 +153,15 @@ export function createApiRoutes(deps: ServerDependencies): Router {
 
         const symbols = parseSymbolsFromContent(content, language);
 
+        const existingNode = storage.getGraphNodeById(nodeIdVal);
         const node: GraphNode = {
           id: nodeIdVal,
           repoId,
           filePath,
           language,
           symbols,
-          summary: '',
-          responsibilities: [],
+          summary: existingNode?.summary ?? '',
+          responsibilities: existingNode?.responsibilities ?? [],
           lastAnalyzed: new Date().toISOString(),
           commitHash: commitHash.trim(),
         };
