@@ -65,6 +65,11 @@ One server process. Multiple repos. Multiple agents. Zero cloud dependencies.
 │   │Manager │ │  Store   │ │  Graph   │ │ Service  │ │  Engine   │  │
 │   └────────┘ └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
 │                                                                      │
+│   ┌────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
+│   │ Health │ │ Activity │ │ Webhook  │ │  Doc     │ │  Search   │  │
+│   │ Score  │ │  Logger  │ │ Service  │ │ Scanner  │ │  Engine   │  │
+│   └────────┘ └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
+│                                                                      │
 │   Storage: ~/.cortex/knowledge.db (single central SQLite DB)         │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -96,9 +101,9 @@ npx cortex serve
 ```
 
 The server starts at **http://localhost:4170** with:
-- `/` — React dashboard
+- `/` — React dashboard (13 pages)
 - `/mcp` — MCP endpoint for AI agents
-- `/api/*` — REST API
+- `/api/*` — REST API (40+ endpoints)
 
 ### Connect Your AI Agent
 
@@ -130,7 +135,7 @@ Capture developer intent as versioned, scoped knowledge rules:
 | **Lesson** | Past issues to avoid | *"Avoid lodash v4.17.20 — prototype pollution"* |
 | **Preference** | Style/architectural choices | *"Prefer composition over inheritance"* |
 
-Rules can be scoped as **cross-repo** (all projects), **global** (all branches in a repo), or **branch-specific**.
+Rules can be scoped as **cross-repo** (all projects), **global** (all branches in a repo), or **branch-specific**. All rules are auto-versioned with full history tracking.
 
 ### Semantic Dependency Graph (via LSP)
 
@@ -139,9 +144,10 @@ Language-agnostic code structure mapping using Language Server Protocol:
 - Extracts functions, classes, interfaces, imports, and call hierarchies
 - Builds a queryable dependency graph stored in SQLite
 - Supports incremental rebuilds — only re-analyzes changed files
+- Regex-based fallback when LSP servers are unavailable
 - Adding a new language = adding a config entry, not writing a parser
 
-**Built-in language server support:** TypeScript/JS, Python, Rust, Go, Java
+**Built-in language server support:** TypeScript/JS, Python, Rust, Go
 
 ### Deterministic Manifest Enforcement
 
@@ -167,15 +173,80 @@ Each branch maintains its own KB view:
 - Branch switches preserve context automatically via Git hooks
 - Merge conflicts in the KB are surfaced and resolvable via MCP
 
+### Health Scoring
+
+Weighted health scoring (0–100) for each repository's knowledge base:
+
+- **6 factors**: summary coverage, responsibility coverage, graph freshness, manifest freshness, rule count, graph connectivity
+- Configurable weights per factor
+- Improvement suggestions generated automatically
+- Visual gauge in the dashboard
+
+### Document Scanner
+
+Automatic discovery and indexing of project documentation:
+
+- Scans for `README.md`, `docs/`, `.cursor/rules`, `CONTRIBUTING.md`, `CHANGELOG.md`, and more
+- Tracks content hashes for change detection
+- Extracts file references from documentation
+- Full CRUD via REST API
+
+### File Metrics & Hotspot Detection
+
+Git-based file metrics to identify code hotspots:
+
+- Commit frequency (30/90 day windows)
+- Author count per file
+- Last modified date
+- Risk scoring: `(churn * 0.7) + (inbound_deps * 0.3)`
+- Visual heatmap mode in the graph viewer
+
+### Activity Logging & Session Tracking
+
+Real-time observability for all server operations:
+
+- In-memory ring buffer (1000 entries) for MCP, REST, and hook calls
+- Per-session grouping with session summaries and deltas
+- Live tail via **Server-Sent Events (SSE)** streaming
+- Filterable by source, action, repo, status, and time range
+- Aggregate statistics dashboard
+
+### Webhook System
+
+Outbound webhooks for external integrations:
+
+- Subscribe to events: `rule.created`, `rule.updated`, `manifest.generated`, `repo.registered`, `sync.completed`, `hook.triggered`
+- HMAC-SHA256 signed payloads
+- Per-repo or global scoping
+- Enable/disable toggle
+
+### Unified Search
+
+Global `Cmd+K` search across the entire knowledge base:
+
+- Searches rules (content + tags), graph nodes (file paths + symbols + summaries), and documents (titles + paths)
+- Cross-repo by default
+- Keyboard-driven overlay in the UI
+
 ### React Dashboard
 
-A web UI at `localhost:4170` for visual management:
+A modern web UI at `localhost:4170` with 13 pages:
 
-- **Dashboard** — cross-repo overview with sync status
-- **Graph Viewer** — interactive D3 force-directed dependency visualization
-- **Rule Manager** — CRUD with inline editing, filtering, version history
-- **Manifest Status** — real-time sync state and drift indicators
-- **Context Inspector** — preview exactly what an AI agent sees for any file
+| Page | Description |
+|------|-------------|
+| **Dashboard** | Cross-repo overview with health scores, activity heatmap, repo cards |
+| **Graph Viewer** | Interactive D3 force-directed dependency visualization with churn heatmap |
+| **Health Score** | Circular SVG gauge with factor breakdown and improvement suggestions |
+| **Documents** | Indexed project documentation browser |
+| **Rule Manager** | CRUD with inline editing, filtering, version history, impact analysis |
+| **Manifest Status** | Real-time sync state and drift indicators |
+| **Context Inspector** | Preview exactly what an AI agent sees for any file |
+| **Branches** | Branch-aware KB management with delta views |
+| **Conflicts** | KB merge conflict resolution |
+| **Activity Logs** | Filterable logs with live SSE tail and statistics |
+| **Sessions** | MCP session replay with timeline and deltas |
+| **Webhooks** | Webhook registration and management |
+| **Search** | Global Cmd+K overlay searching rules, nodes, and docs |
 
 ---
 
@@ -183,7 +254,7 @@ A web UI at `localhost:4170` for visual management:
 
 ### Dashboard
 
-Cross-repo overview showing registered repositories, sync status, server info, and cross-repo rules at a glance.
+Cross-repo overview showing registered repositories, health scores, activity heatmap, server info, and quick-start snippets.
 
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="Dashboard — cross-repo overview" width="900" />
@@ -191,15 +262,31 @@ Cross-repo overview showing registered repositories, sync status, server info, a
 
 ### Dependency Graph
 
-Interactive D3 force-directed graph visualizing all file-level imports and dependencies across the codebase. Filterable by language and colorable by language or directory.
+Interactive D3 force-directed graph visualizing all file-level imports and dependencies. Filterable by language, colorable by language or directory, with churn-based heatmap mode.
 
 <p align="center">
   <img src="docs/screenshots/graph-viewer.png" alt="Dependency Graph — interactive D3 visualization" width="900" />
 </p>
 
+### Health Score
+
+Circular SVG gauge showing the repository's weighted health score (0–100) with individual factor breakdown and improvement suggestions.
+
+<p align="center">
+  <img src="docs/screenshots/health-score.png" alt="Health Score — weighted KB health gauge" width="900" />
+</p>
+
+### Document Viewer
+
+Browse indexed project documentation — README files, Cursor rules, changelogs, and more — with content preview and file references.
+
+<p align="center">
+  <img src="docs/screenshots/document-viewer.png" alt="Document Viewer — indexed documentation browser" width="900" />
+</p>
+
 ### Rule Manager
 
-Full CRUD interface for knowledge rules (constraints, lessons, preferences) with inline editing, type/scope filters, tag display, and version tracking.
+Full CRUD interface for knowledge rules (constraints, lessons, preferences) with inline editing, type/scope filters, tag display, version history, and impact analysis.
 
 <p align="center">
   <img src="docs/screenshots/rule-manager.png" alt="Rule Manager — knowledge rule CRUD" width="900" />
@@ -237,6 +324,30 @@ Surface and resolve knowledge base conflicts that arise during branch merges.
   <img src="docs/screenshots/conflicts.png" alt="Conflict Resolver — KB merge conflict resolution" width="900" />
 </p>
 
+### Activity Logs
+
+Real-time activity logging with filters by source/action/status, live SSE tail, and aggregate statistics.
+
+<p align="center">
+  <img src="docs/screenshots/activity-logs.png" alt="Activity Logs — real-time observability" width="900" />
+</p>
+
+### Session Replay
+
+MCP session timeline with call details, duration tracking, and session deltas.
+
+<p align="center">
+  <img src="docs/screenshots/session-replay.png" alt="Session Replay — MCP session timeline" width="900" />
+</p>
+
+### Webhook Manager
+
+Register, toggle, and manage outbound webhooks with event filtering and HMAC-SHA256 signatures.
+
+<p align="center">
+  <img src="docs/screenshots/webhook-manager.png" alt="Webhook Manager — outbound webhook configuration" width="900" />
+</p>
+
 ---
 
 ## MCP Tools
@@ -262,15 +373,13 @@ All repo-scoped tools accept a `repoPath` parameter to identify the target proje
 | URI | Description |
 |-----|-------------|
 | `kb://repos` | All registered repos |
-| `kb://repos/{repoId}/manifest` | Manifest for a repo |
-| `kb://repos/{repoId}/rules` | Active rules for a repo |
-| `kb://repos/{repoId}/graph` | Full dependency graph |
-| `kb://repos/{repoId}/stats` | KB statistics |
 | `kb://rules/cross-repo` | Cross-repo rules |
 
 ---
 
 ## REST API
+
+### Core Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -278,15 +387,69 @@ All repo-scoped tools accept a `repoPath` parameter to identify the target proje
 | GET | `/api/repos` | List all repos |
 | POST | `/api/repos` | Register a repo by path |
 | GET | `/api/repos/:repoId` | Repo details + manifest + stats |
+
+### Graph Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/api/repos/:repoId/graph` | Query dependency graph |
 | POST | `/api/repos/:repoId/graph/build` | Trigger graph build for a repo |
-| GET | `/api/repos/:repoId/rules` | List rules (filterable) |
+| GET | `/api/repos/:repoId/graph/metrics` | File-level git metrics (churn, authors) |
+
+### Rule Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/repos/:repoId/rules` | List rules (filterable by type/scope/active) |
 | POST | `/api/repos/:repoId/rules` | Create a rule |
 | PUT | `/api/repos/:repoId/rules/:id` | Update a rule |
-| GET | `/api/repos/:repoId/manifest` | Current manifest |
-| GET | `/api/repos/:repoId/context` | Context for a file |
-| GET | `/api/repos/:repoId/stats` | Node/edge/rule counts |
+| GET | `/api/repos/:repoId/rules/:id/history` | Version history for a rule |
+| GET | `/api/repos/:repoId/rules/:id/impact` | Impact analysis for a rule |
 | GET | `/api/rules/cross-repo` | Cross-repo rules |
+| POST | `/api/rules/cross-repo` | Create cross-repo rule |
+
+### Knowledge Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/repos/:repoId/manifest` | Current manifest |
+| GET | `/api/repos/:repoId/context` | Context for a file (what an AI agent sees) |
+| GET | `/api/repos/:repoId/stats` | Node/edge/rule counts |
+| GET | `/api/repos/:repoId/health` | Health score with factor breakdown |
+
+### Document Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/repos/:repoId/docs` | List indexed documents |
+| GET | `/api/repos/:repoId/docs/:docId` | Document metadata |
+| GET | `/api/repos/:repoId/docs/:docId/content` | Document content |
+| GET | `/api/repos/:repoId/docs/:docId/references` | File references in document |
+| POST | `/api/repos/:repoId/docs/scan` | Trigger document re-scan |
+
+### Observability Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/logs` | Query activity logs (filterable) |
+| GET | `/api/logs/stats` | Aggregate log statistics |
+| GET | `/api/logs/stream` | SSE stream for live log tail |
+| GET | `/api/sessions` | List MCP sessions |
+| GET | `/api/sessions/:id` | Session detail |
+| GET | `/api/sessions/:id/delta` | Session delta (changes made) |
+| GET | `/api/analytics` | Cross-repo analytics with activity trends |
+
+### Integration Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/webhooks` | List webhooks |
+| POST | `/api/webhooks` | Register a webhook |
+| PUT | `/api/webhooks/:id` | Toggle webhook active/inactive |
+| DELETE | `/api/webhooks/:id` | Remove a webhook |
+| GET | `/api/search?q=` | Unified search across rules, nodes, docs |
+| POST | `/api/repos/notify` | Git hook event notifications |
+| GET | `/api/repos/manifest?repoPath=` | Manifest lookup by path (for hooks) |
 
 ---
 
@@ -354,28 +517,64 @@ Per-repo values override central defaults at the key level.
 ```
 cortex/
 ├── src/
-│   ├── core/                  # Types, config, SQLite storage, errors
+│   ├── core/                  # Types, config, SQLite storage (8 tables), errors
 │   ├── repo/                  # Repo manager + request router
-│   ├── git/                   # Git operations, diff parsing, hook installer
+│   ├── git/                   # Git operations, diff parsing, hook installer, file metrics
 │   ├── lsp/                   # Language server registry, pool, protocol helpers
-│   ├── graph/                 # Graph builder (LSP), queries, incremental updates
-│   ├── knowledge/             # Rule service, branch service, conflict resolver
+│   ├── graph/                 # Graph builder (LSP + regex fallback), queries, incremental updates
+│   ├── knowledge/             # Rule service, branch service, conflict resolver, health scoring
 │   ├── manifest/              # Manifest generation, SHA-256 hash computation
 │   ├── sync/                  # Sync orchestration + data collection for agents
-│   ├── server/                # Express HTTP server, MCP endpoint, REST routes
+│   ├── docs/                  # Document scanner + document service
+│   ├── server/                # Express HTTP server, MCP endpoint, REST routes,
+│   │                          # activity logging, webhook service
 │   ├── cli/                   # CLI entry point + commands (serve, repos, status, etc.)
-│   ├── ui/                    # Vite + React + Tailwind dashboard
-│   │   ├── components/        # Dashboard, GraphViewer, RuleManager, etc.
-│   │   ├── hooks/             # TanStack Query hooks (useRepos, useGraph, etc.)
-│   │   └── lib/               # API client, D3 graph layout config
+│   ├── ui/                    # Vite + React 19 + Tailwind CSS 4 dashboard
+│   │   ├── components/        # 13 page components (Dashboard, GraphViewer, HealthScore,
+│   │   │                      #   DocumentViewer, RuleManager, ManifestStatus, ContextInspector,
+│   │   │                      #   BranchSelector, ConflictResolver, ActivityLogs, SessionReplay,
+│   │   │                      #   WebhookManager, HotspotList, SearchOverlay, Layout)
+│   │   ├── hooks/             # TanStack Query hooks (useRepos, useGraph, useHealth,
+│   │   │                      #   useLogs, useSessions, useDocs, useAnalytics, etc.)
+│   │   └── lib/               # API client (30+ typed methods), D3 graph layout config
 │   └── index.ts               # Library exports
 ├── scripts/                   # Git hook templates (pre-commit, post-merge, etc.)
-├── tests/                     # Vitest test suites (core, git, knowledge, server, etc.)
-├── docs/                      # Project requirements specification
+├── tests/                     # Vitest test suites
+├── docs/                      # Project documentation
+│   ├── PROJECT-REQUIREMENTS.md    # Full specification & design document
+│   ├── SYSTEM-ARCHITECTURE.md     # Auto-generated architecture deep-dive (21 features)
+│   └── screenshots/               # UI screenshots
 ├── package.json
 ├── tsconfig.json
 └── vitest.config.ts
 ```
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Project Requirements](docs/PROJECT-REQUIREMENTS.md) | Complete specification with data models, component specs, phases, and success criteria |
+| [System Architecture](docs/SYSTEM-ARCHITECTURE.md) | Auto-generated deep-dive covering all 21 features/subsystems with implementation details, data flow, design decisions, and trade-offs |
+
+---
+
+## How It Works
+
+The knowledge synchronization workflow:
+
+```
+1. Developer stages changes
+2. AI agent calls sync_kb → Cortex returns staged files, diff, affected nodes, rules
+3. AI agent analyzes the data and proposes KB updates
+4. Developer reviews and approves
+5. AI agent calls apply_kb_updates → Cortex persists changes, refreshes manifest
+6. Developer commits → pre-commit hook verifies manifest hash matches staged hash
+7. Commit succeeds ✅
+```
+
+If the knowledge base is out of sync, the pre-commit hook blocks the commit and guides the developer to run a sync through their AI agent.
 
 ---
 
@@ -415,34 +614,17 @@ npm run format
 | **Language** | TypeScript 5.8 (strict mode) |
 | **MCP** | @modelcontextprotocol/sdk (Streamable HTTP) |
 | **HTTP** | Express 5 |
-| **Database** | better-sqlite3 (central SQLite) |
+| **Database** | better-sqlite3 (WAL mode, 8 tables) |
 | **Git** | simple-git |
 | **LSP** | vscode-jsonrpc + vscode-languageserver-protocol |
 | **CLI** | Commander |
 | **Validation** | Zod |
 | **UI** | React 19 + Vite + Tailwind CSS 4 |
-| **Graphs** | D3.js (force-directed) |
-| **Data Fetching** | TanStack Query |
+| **Routing** | React Router 7 |
+| **Data Fetching** | TanStack Query 5 |
+| **Graphs** | D3.js 7 (force-directed) |
 | **Icons** | Lucide React |
 | **Testing** | Vitest |
-
----
-
-## How It Works
-
-The knowledge synchronization workflow:
-
-```
-1. Developer stages changes
-2. AI agent calls sync_kb → Cortex returns staged files, diff, affected nodes, existing rules
-3. AI agent analyzes the data and proposes KB updates
-4. Developer reviews and approves
-5. AI agent calls apply_kb_updates → Cortex persists changes, refreshes manifest
-6. Developer commits → pre-commit hook verifies manifest hash matches staged hash
-7. Commit succeeds ✅
-```
-
-If the knowledge base is out of sync, the pre-commit hook blocks the commit and guides the developer to run a sync through their AI agent.
 
 ---
 
@@ -454,6 +636,7 @@ If the knowledge base is out of sync, the pre-commit hook blocks the commit and 
 - **Language-agnostic** — LSP-based graph engine; new languages via config
 - **Git-native** — hooks enforce sync; branches maintain independent KB views
 - **Deterministic** — SHA-256 manifests make sync state verifiable and reproducible
+- **Observable** — every MCP and REST call is logged with session tracking and SSE streaming
 
 ---
 
